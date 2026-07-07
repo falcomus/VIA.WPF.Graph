@@ -5,27 +5,16 @@ using Rubjerg.Graphviz;
 namespace VIA.WPF.Graph.Graphviz.Verification;
 
 /// <summary>
-/// Executes the P0-002 runtime verification against Rubjerg.Graphviz 3.0.5.
-/// This is a temporary technical probe and not the later layout adapter.
+/// Executes the P0-002 runtime verification and provides the P0-003 technical reference geometry.
+/// This code is a temporary technical probe and not the later layout adapter.
 /// </summary>
 public static class GraphvizRuntimeProbe
 {
     private const string ExpectedPackageVersion = "3.0.5";
 
-    private static readonly string[] NodeIds =
-    [
-        "start",
-        "registration",
-        "main",
-        "help_popup",
-        "confirmation",
-        "finish"
-    ];
-
     public static GraphvizRuntimeProbeResult Run()
     {
-        GraphvizLayoutProbeResult topToBottom = RunLayout("TB");
-        GraphvizLayoutProbeResult leftToRight = RunLayout("LR");
+        GraphvizMinimalGraphReferenceResult reference = GraphvizMinimalGraphReference.Create();
 
         Assembly packageAssembly = typeof(RootGraph).Assembly;
         string packageAssemblyVersion = packageAssembly
@@ -38,84 +27,157 @@ public static class GraphvizRuntimeProbe
             packageAssemblyVersion,
             RuntimeInformation.ProcessArchitecture.ToString(),
             RuntimeInformation.RuntimeIdentifier,
-            topToBottom,
-            leftToRight);
+            reference.TopToBottom,
+            reference.LeftToRight);
+    }
+}
+
+/// <summary>
+/// Creates the fixed P0-003 graph and exposes only neutral numeric layout data to the demo.
+/// </summary>
+public static class GraphvizMinimalGraphReference
+{
+    private static readonly NodeDefinition[] NodeDefinitions =
+    [
+        new("start", "Start"),
+        new("registration", "Registration"),
+        new("main", "Main"),
+        new("help_popup", "Help popup"),
+        new("confirmation", "Confirmation"),
+        new("finish", "Finish")
+    ];
+
+    private static readonly EdgeDefinition[] EdgeDefinitions =
+    [
+        new("start_registration", "start", "registration", false),
+        new("start_main", "start", "main", false),
+        new("main_help_popup", "main", "help_popup", false),
+        new("help_popup_confirmation", "help_popup", "confirmation", false),
+        new("confirmation_finish", "confirmation", "finish", false),
+        new("confirmation_start_back", "confirmation", "start", true)
+    ];
+
+    private static readonly ClusterDefinition[] ClusterDefinitions =
+    [
+        new("cluster_entry", "Entry", ["start", "registration"]),
+        new("cluster_work", "Work", ["main", "help_popup", "confirmation", "finish"])
+    ];
+
+    public static GraphvizMinimalGraphReferenceResult Create()
+    {
+        return new GraphvizMinimalGraphReferenceResult(
+            CreateLayout("TB"),
+            CreateLayout("LR"));
     }
 
-    private static GraphvizLayoutProbeResult RunLayout(string direction)
+    private static GraphvizReferenceLayout CreateLayout(string direction)
     {
         RootGraph source = CreateSourceGraph();
         source.SetAttribute("rankdir", direction);
 
         RootGraph layout = source.CreateLayout(coordinateSystem: CoordinateSystem.TopLeft);
 
-        Dictionary<string, string> nodeBounds = new(StringComparer.Ordinal);
-        foreach (string nodeId in NodeIds)
-        {
-            Node layoutNode = layout.GetNode(nodeId)
-                ?? throw new InvalidOperationException($"The {direction} layout does not contain node '{nodeId}'.");
+        IReadOnlyList<GraphvizReferenceNode> nodes = NodeDefinitions
+            .Select(definition =>
+            {
+                Node layoutNode = layout.GetNode(definition.Id)
+                    ?? throw new InvalidOperationException($"The {direction} layout does not contain node '{definition.Id}'.");
 
-            nodeBounds.Add(nodeId, layoutNode.GetBoundingBox().ToString());
-        }
+                return new GraphvizReferenceNode(
+                    definition.Id,
+                    definition.Title,
+                    ToReferenceRectangle(layoutNode.GetBoundingBox()));
+            })
+            .ToArray();
 
-        SubGraph entryCluster = layout.GetSubgraph("cluster_entry")
-            ?? throw new InvalidOperationException($"The {direction} layout does not contain cluster 'cluster_entry'.");
-        SubGraph workCluster = layout.GetSubgraph("cluster_work")
-            ?? throw new InvalidOperationException($"The {direction} layout does not contain cluster 'cluster_work'.");
+        IReadOnlyList<GraphvizReferenceCluster> clusters = ClusterDefinitions
+            .Select(definition =>
+            {
+                SubGraph layoutCluster = layout.GetSubgraph(definition.Id)
+                    ?? throw new InvalidOperationException($"The {direction} layout does not contain cluster '{definition.Id}'.");
 
-        Node confirmation = layout.GetNode("confirmation")
-            ?? throw new InvalidOperationException($"The {direction} layout does not contain node 'confirmation'.");
-        Node start = layout.GetNode("start")
-            ?? throw new InvalidOperationException($"The {direction} layout does not contain node 'start'.");
+                return new GraphvizReferenceCluster(
+                    definition.Id,
+                    definition.Title,
+                    ToReferenceRectangle(layoutCluster.GetBoundingBox()));
+            })
+            .ToArray();
 
-        Edge backEdge = layout.GetEdge(confirmation, start, "confirmation_start_back")
-            ?? throw new InvalidOperationException($"The {direction} layout does not contain the named back edge.");
-        PointD[] backEdgeSpline = backEdge.GetFirstSpline();
+        IReadOnlyList<GraphvizReferenceEdge> edges = EdgeDefinitions
+            .Select(definition =>
+            {
+                Node sourceNode = layout.GetNode(definition.SourceNodeId)
+                    ?? throw new InvalidOperationException($"The {direction} layout does not contain source node '{definition.SourceNodeId}'.");
+                Node targetNode = layout.GetNode(definition.TargetNodeId)
+                    ?? throw new InvalidOperationException($"The {direction} layout does not contain target node '{definition.TargetNodeId}'.");
+                Edge layoutEdge = layout.GetEdge(sourceNode, targetNode, definition.Id)
+                    ?? throw new InvalidOperationException($"The {direction} layout does not contain edge '{definition.Id}'.");
 
-        if (backEdgeSpline.Length == 0)
-        {
-            throw new InvalidOperationException($"The {direction} layout has no spline geometry for the named back edge.");
-        }
+                PointD[] spline = layoutEdge.GetFirstSpline();
+                if (spline.Length == 0)
+                {
+                    throw new InvalidOperationException($"The {direction} layout has no spline geometry for edge '{definition.Id}'.");
+                }
 
-        return new GraphvizLayoutProbeResult(
+                return new GraphvizReferenceEdge(
+                    definition.Id,
+                    definition.IsBackEdge,
+                    spline.Select(ToReferencePoint).ToArray());
+            })
+            .ToArray();
+
+        return new GraphvizReferenceLayout(
             direction,
-            layout.GetBoundingBox().ToString(),
-            entryCluster.GetBoundingBox().ToString(),
-            workCluster.GetBoundingBox().ToString(),
-            nodeBounds,
-            backEdgeSpline.Length);
+            ToReferenceRectangle(layout.GetBoundingBox()),
+            clusters,
+            nodes,
+            edges);
     }
 
     private static RootGraph CreateSourceGraph()
     {
-        RootGraph source = RootGraph.CreateNew(GraphType.Directed, "via_wpf_graph_p0_002");
+        RootGraph source = RootGraph.CreateNew(GraphType.Directed, "via_wpf_graph_p0_003");
 
-        Node start = source.GetOrAddNode("start");
-        Node registration = source.GetOrAddNode("registration");
-        Node main = source.GetOrAddNode("main");
-        Node helpPopup = source.GetOrAddNode("help_popup");
-        Node confirmation = source.GetOrAddNode("confirmation");
-        Node finish = source.GetOrAddNode("finish");
+        Dictionary<string, Node> nodes = NodeDefinitions.ToDictionary(
+            definition => definition.Id,
+            definition => source.GetOrAddNode(definition.Id),
+            StringComparer.Ordinal);
 
-        _ = source.GetOrAddEdge(start, registration, "start_registration");
-        _ = source.GetOrAddEdge(start, main, "start_main");
-        _ = source.GetOrAddEdge(main, helpPopup, "main_help_popup");
-        _ = source.GetOrAddEdge(helpPopup, confirmation, "help_popup_confirmation");
-        _ = source.GetOrAddEdge(confirmation, finish, "confirmation_finish");
-        _ = source.GetOrAddEdge(confirmation, start, "confirmation_start_back");
+        foreach (EdgeDefinition edgeDefinition in EdgeDefinitions)
+        {
+            _ = source.GetOrAddEdge(
+                nodes[edgeDefinition.SourceNodeId],
+                nodes[edgeDefinition.TargetNodeId],
+                edgeDefinition.Id);
+        }
 
-        SubGraph entryCluster = source.GetOrAddSubgraph("cluster_entry");
-        entryCluster.AddExisting(start);
-        entryCluster.AddExisting(registration);
-
-        SubGraph workCluster = source.GetOrAddSubgraph("cluster_work");
-        workCluster.AddExisting(main);
-        workCluster.AddExisting(helpPopup);
-        workCluster.AddExisting(confirmation);
-        workCluster.AddExisting(finish);
+        foreach (ClusterDefinition clusterDefinition in ClusterDefinitions)
+        {
+            SubGraph cluster = source.GetOrAddSubgraph(clusterDefinition.Id);
+            foreach (string nodeId in clusterDefinition.NodeIds)
+            {
+                cluster.AddExisting(nodes[nodeId]);
+            }
+        }
 
         return source;
     }
+
+    private static GraphvizReferencePoint ToReferencePoint(PointD point)
+    {
+        return new GraphvizReferencePoint(point.X, point.Y);
+    }
+
+    private static GraphvizReferenceRectangle ToReferenceRectangle(RectangleD rectangle)
+    {
+        return new GraphvizReferenceRectangle(rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
+    }
+
+    private sealed record NodeDefinition(string Id, string Title);
+
+    private sealed record EdgeDefinition(string Id, string SourceNodeId, string TargetNodeId, bool IsBackEdge);
+
+    private sealed record ClusterDefinition(string Id, string Title, IReadOnlyList<string> NodeIds);
 }
 
 public sealed record GraphvizRuntimeProbeResult(
@@ -123,8 +185,8 @@ public sealed record GraphvizRuntimeProbeResult(
     string PackageAssemblyVersion,
     string ProcessArchitecture,
     string RuntimeIdentifier,
-    GraphvizLayoutProbeResult TopToBottom,
-    GraphvizLayoutProbeResult LeftToRight)
+    GraphvizReferenceLayout TopToBottom,
+    GraphvizReferenceLayout LeftToRight)
 {
     public string ToDisplayText()
     {
@@ -143,7 +205,7 @@ public sealed record GraphvizRuntimeProbeResult(
             "- 2 Graphviz clusters created and measured",
             "- top-to-bottom and left-to-right layouts created",
             "- node, graph and cluster bounds read",
-            "- back-edge spline geometry read"
+            "- edge spline geometry read"
         ];
 
         AppendLayout(lines, TopToBottom);
@@ -152,27 +214,59 @@ public sealed record GraphvizRuntimeProbeResult(
         return string.Join(Environment.NewLine, lines);
     }
 
-    private static void AppendLayout(List<string> lines, GraphvizLayoutProbeResult layout)
+    private static void AppendLayout(List<string> lines, GraphvizReferenceLayout layout)
     {
+        GraphvizReferenceCluster entryCluster = layout.Clusters.Single(cluster => cluster.Id == "cluster_entry");
+        GraphvizReferenceCluster workCluster = layout.Clusters.Single(cluster => cluster.Id == "cluster_work");
+        GraphvizReferenceEdge backEdge = layout.Edges.Single(edge => edge.IsBackEdge);
+
         lines.Add(string.Empty);
         lines.Add($"{layout.Direction} layout:");
-        lines.Add($"- Root graph bounds: {layout.RootGraphBounds}");
-        lines.Add($"- Entry cluster bounds: {layout.EntryClusterBounds}");
-        lines.Add($"- Work cluster bounds: {layout.WorkClusterBounds}");
-        lines.Add($"- Back-edge spline point count: {layout.BackEdgeSplinePointCount}");
+        lines.Add($"- Root graph bounds: {layout.GraphBounds.ToDisplayText()}");
+        lines.Add($"- Entry cluster bounds: {entryCluster.Bounds.ToDisplayText()}");
+        lines.Add($"- Work cluster bounds: {workCluster.Bounds.ToDisplayText()}");
+        lines.Add($"- Back-edge spline point count: {backEdge.Points.Count}");
         lines.Add("- Node bounds:");
 
-        foreach ((string nodeId, string bounds) in layout.NodeBounds.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        foreach (GraphvizReferenceNode node in layout.Nodes.OrderBy(node => node.Id, StringComparer.Ordinal))
         {
-            lines.Add($"  - {nodeId}: {bounds}");
+            lines.Add($"  - {node.Id}: {node.Bounds.ToDisplayText()}");
         }
     }
 }
 
-public sealed record GraphvizLayoutProbeResult(
+public sealed record GraphvizMinimalGraphReferenceResult(
+    GraphvizReferenceLayout TopToBottom,
+    GraphvizReferenceLayout LeftToRight);
+
+public sealed record GraphvizReferenceLayout(
     string Direction,
-    string RootGraphBounds,
-    string EntryClusterBounds,
-    string WorkClusterBounds,
-    IReadOnlyDictionary<string, string> NodeBounds,
-    int BackEdgeSplinePointCount);
+    GraphvizReferenceRectangle GraphBounds,
+    IReadOnlyList<GraphvizReferenceCluster> Clusters,
+    IReadOnlyList<GraphvizReferenceNode> Nodes,
+    IReadOnlyList<GraphvizReferenceEdge> Edges);
+
+public sealed record GraphvizReferenceCluster(
+    string Id,
+    string Title,
+    GraphvizReferenceRectangle Bounds);
+
+public sealed record GraphvizReferenceNode(
+    string Id,
+    string Title,
+    GraphvizReferenceRectangle Bounds);
+
+public sealed record GraphvizReferenceEdge(
+    string Id,
+    bool IsBackEdge,
+    IReadOnlyList<GraphvizReferencePoint> Points);
+
+public sealed record GraphvizReferencePoint(double X, double Y);
+
+public sealed record GraphvizReferenceRectangle(double X, double Y, double Width, double Height)
+{
+    public string ToDisplayText()
+    {
+        return $"{{X={X}, Y={Y}, Width={Width}, Height={Height}}}";
+    }
+}

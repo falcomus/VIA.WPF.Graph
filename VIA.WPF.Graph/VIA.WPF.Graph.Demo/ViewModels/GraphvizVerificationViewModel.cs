@@ -11,7 +11,16 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     private bool isVerificationRunning;
 
     [ObservableProperty]
-    private string resultText = "P0-002 wird gestartet ...";
+    private string resultText = "P0-003 wird gestartet ...";
+
+    [ObservableProperty]
+    private string technicalDetails = string.Empty;
+
+    [ObservableProperty]
+    private GraphvizReferenceLayoutViewModel? topToBottomLayout;
+
+    [ObservableProperty]
+    private GraphvizReferenceLayoutViewModel? leftToRightLayout;
 
     public GraphvizVerificationViewModel()
     {
@@ -29,21 +38,22 @@ public partial class GraphvizVerificationViewModel : ObservableObject
         try
         {
             IsVerificationRunning = true;
-            ResultText = "P0-002 läuft ...";
+            ResultText = "P0-003 läuft ...";
+            TechnicalDetails = string.Empty;
+            TopToBottomLayout = null;
+            LeftToRightLayout = null;
 
             GraphvizRuntimeProbeResult result = await Task.Run(GraphvizRuntimeProbe.Run);
-            ResultText = result.ToDisplayText();
+
+            TopToBottomLayout = GraphvizReferenceLayoutViewModel.Create(result.TopToBottom);
+            LeftToRightLayout = GraphvizReferenceLayoutViewModel.Create(result.LeftToRight);
+            TechnicalDetails = result.ToDisplayText();
+            ResultText = "P0-003 PASSED – beide Graphviz-Layouts wurden als WPF-Testbild erzeugt.";
         }
         catch (Exception exception)
         {
-            ResultText = string.Join(
-                Environment.NewLine,
-                "P0-002 FAILED",
-                string.Empty,
-                "Die technische Graphviz-Prüfung konnte nicht abgeschlossen werden.",
-                "Bitte den vollständigen Text aus diesem Fenster in den Chat kopieren.",
-                string.Empty,
-                exception);
+            ResultText = "P0-003 FAILED – die technische Referenz konnte nicht erzeugt werden.";
+            TechnicalDetails = exception.ToString();
         }
         finally
         {
