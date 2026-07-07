@@ -1,1 +1,6 @@
-<Solution />
+<Solution>
+  <Project Path="VIA.WPF.Graph.Core/VIA.WPF.Graph.Core.csproj" />
+  <Project Path="VIA.WPF.Graph.Graphviz/VIA.WPF.Graph.Graphviz.csproj" />
+  <Project Path="VIA.WPF.Graph.Wpf/VIA.WPF.Graph.Wpf.csproj" />
+  <Project Path="VIA.WPF.Graph.Demo/VIA.WPF.Graph.Demo.csproj" />
+</Solution>
