@@ -143,7 +143,7 @@ Diese Kombination ist jedoch nicht robust gegen Umordnen oder mehrere gleicharti
 
 ## 4. Zielprojektstruktur
 
-Die Namen sind Zielnamen. `VIA.WPF.Graph.sln` entsteht zunächst als eigenständige Test-/Prototyp-Solution. Phase 0 legt Repository-Ort, Namespaces und die spätere Übernahme in eine allgemeine Bibliotheksstruktur verbindlich fest.
+Die Namen sind Zielnamen. Die bereits vorhandene `VIA.WPF.Graph/VIA.WPF.Graph.slnx` ist die verbindliche eigenständige Test-/Prototyp-Solution. Sie wird weder durch eine `.sln` ergänzt noch migriert. Phase 0 legt Repository-Ort, Namespaces und die spätere Übernahme in eine allgemeine Bibliotheksstruktur verbindlich fest.
 
 ```text
 VIA.WPF.Graph.Core
@@ -191,6 +191,47 @@ VIA.WPF.Graph.Core -> Rubjerg.Graphviz
 VIA.WPF.Graph.* -> Mockup / UserFlow
 Graph-Renderer -> UserFlow-Collections direkt
 ```
+
+### 4.2 Verbindliche P0-001-Entscheidung: Repository, Projekte und Isolationsgrenzen
+
+**Repository- und Ordnerkonvention**
+
+```text
+Repository-Root/
+  README.md
+  docs/
+    VIA.WPF.Graph_Masterplan.md
+    VIA.WPF.Graph_ManagementOverview.md
+  VIA.WPF.Graph/
+    .gitignore
+    VIA.WPF.Graph.slnx
+    VIA.WPF.Graph.Core/       (späteres Projektverzeichnis)
+    VIA.WPF.Graph.Graphviz/   (späteres Projektverzeichnis)
+    VIA.WPF.Graph.Wpf/        (späteres Projektverzeichnis)
+    VIA.WPF.Graph.Demo/       (späteres Projektverzeichnis)
+```
+
+- `VIA.WPF.Graph/VIA.WPF.Graph.slnx` bleibt das einzige Solution-Format dieser Library.
+- Dokumentation liegt im Repository-Root unter `docs/`; die README liegt im Repository-Root.
+- Die vier späteren Projektverzeichnisse werden direkte Kinder des Solution-Ordners `VIA.WPF.Graph/`.
+- Assembly- und Root-Namespace eines späteren Projekts entsprechen genau seinem Projektnamen: `VIA.WPF.Graph.Core`, `VIA.WPF.Graph.Graphviz`, `VIA.WPF.Graph.Wpf` und `VIA.WPF.Graph.Demo`.
+- Es wird weder ein `VIA.WPF.Graph.UserFlow`- noch ein `VIA.WPF.Graph.Mockup`-Projekt oder -Namespace in dieser Solution angelegt.
+
+**Verbindliche Referenzmatrix**
+
+```text
+VIA.WPF.Graph.Core      -> keine Projekt-, WPF-, Graphviz-, UserFlow- oder Host-Abhängigkeit
+VIA.WPF.Graph.Graphviz  -> VIA.WPF.Graph.Core
+VIA.WPF.Graph.Wpf       -> VIA.WPF.Graph.Core
+VIA.WPF.Graph.Demo      -> VIA.WPF.Graph.Core, VIA.WPF.Graph.Graphviz, VIA.WPF.Graph.Wpf
+
+VIA.WPF.Graph.Graphviz <-> VIA.WPF.Graph.Wpf                 verboten
+Alle VIA.WPF.Graph.*-Projekte -> UserFlow / Mockup           verboten
+```
+
+Die Demo ist ausschließlich der Composition Root. Sie darf Graphviz-Layout und WPF-Renderer zusammensetzen. Der WPF-Renderer erhält weder eine Projekt- noch eine Paketabhängigkeit zu Graphviz; Graphviz bleibt ausschließlich Layoutadapter.
+
+P0-001 dokumentiert diese Struktur, erzeugt aber keine Projekt-, NuGet-, C#- oder XAML-Dateien. Solche Dateien gehören erst in einen danach ausdrücklich freigegebenen Umsetzungsschritt.
 
 ---
 
@@ -761,7 +802,7 @@ Graph-UI erhält danach nur einen neuen Render-Snapshot. Kein eigenes zweites Un
 
 **Umfang:**
 
-- neue `VIA.WPF.Graph.sln` und vorhandene Namespace-/Projektkonventionen festlegen,
+- die bestehende `VIA.WPF.Graph.slnx` sowie Namespace-/Projektkonventionen verbindlich festlegen und dokumentieren,
 - **keinen Code aus der früheren Graphviz-Demo übernehmen**; die neue Lösung entsteht gemäß diesem Plan als eigenständige Solution,
 - die frühere Demo höchstens als unverbindliche visuelle Referenz betrachten, aber nicht an einen neuen Chat übergeben und nicht kompilieren,
 - Rubjerg.Graphviz 3.0.5 gegen den tatsächlichen Zielrechner validieren,
@@ -771,7 +812,7 @@ Graph-UI erhält danach nur einen neuen Render-Snapshot. Kein eigenes zweites Un
 
 **Entscheidungen vor Phase 1:**
 
-- Wie lautet die konkrete Solution-/Projektstruktur unter `VIA.WPF.Graph`?
+- P0-001: Die konkrete Solution-/Projektstruktur unter `VIA.WPF.Graph` einschließlich Referenzmatrix ist in Abschnitt 4.2 verbindlich festgelegt.
 - Welcher minimale neutrale Graphvertrag wird in Phase 1 umgesetzt?
 - Sollen Popups im allgemeinen Modell als eigener NodeKind oder nur als Host-Metadatum geführt werden?
 - Welche View-State-Daten gehören in den allgemeinen, hostneutralen Vertrag und welche bleiben vollständig beim jeweiligen Host?
@@ -1164,7 +1205,7 @@ Mögliche Themen:
 
 ## 16. Empfohlene Reihenfolge der nächsten konkreten Schritte
 
-1. Phase 0 durchführen: neue `VIA.WPF.Graph`-Solution, Rubjerg-Runtime und den neutralen Datenmodellrahmen prüfen; keine technische Alt-Demo übernehmen und keine Host-spezifischen Entscheidungen treffen.
+1. Phase 0 durchführen: die bestehende `VIA.WPF.Graph.slnx`, Rubjerg-Runtime und den neutralen Datenmodellrahmen prüfen; keine technische Alt-Demo übernehmen und keine Host-spezifischen Entscheidungen treffen.
 2. VIA.WPF.Graph.Core und VIA.WPF.Graph.Graphviz ohne UserFlow-Abhängigkeit aufbauen.
 3. WPF-Canvas und Navigation Path Tree im Demo-Projekt validieren.
 4. Den allgemeinen Hostvertrag für Requests und Capabilities abnehmen.

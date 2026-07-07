@@ -18,15 +18,24 @@
 - Spätere Wiederverwendung auch außerhalb von UserFlow.
 
 ## 3. Architektur und Sicherheitsgrenzen
-- Eigenständige Solution: `VIA.WPF.Graph`.
-  - `Core`: neutrales Graphmodell und Regeln.
-  - `Graphviz`: automatische Anordnung und Kantenführung.
-  - `Wpf`: Darstellung, Zoom, Auswahl und Interaktion.
-  - `Demo`: unabhängige Testanwendung.
-- Klare Abhängigkeiten.
-  - Core kennt weder WPF noch Graphviz noch UserFlow.
-  - UserFlow verwendet die Graph-Bibliothek erst später über einen Adapter.
-  - Die Graph-UI ändert keine UserFlow-Daten direkt.
+- Verbindliche Solution: `VIA.WPF.Graph/VIA.WPF.Graph.slnx`.
+  - Keine `.sln` ergänzen oder migrieren.
+  - Dokumentation liegt im Repository-Root unter `docs/`; die README liegt im Repository-Root.
+  - Die späteren Projektordner liegen direkt im Solution-Ordner `VIA.WPF.Graph/`.
+- Zielprojekte und gleichlautende Assembly-/Root-Namespaces.
+  - `VIA.WPF.Graph.Core`: neutrales Graphmodell und Regeln.
+  - `VIA.WPF.Graph.Graphviz`: automatische Anordnung und Kantenführung.
+  - `VIA.WPF.Graph.Wpf`: Darstellung, Zoom, Auswahl und Interaktion.
+  - `VIA.WPF.Graph.Demo`: unabhängige Testanwendung und einziger Composition Root.
+- Verbindliche Referenzen.
+  - Core → keine Projekt-, WPF-, Graphviz-, UserFlow- oder Host-Abhängigkeit.
+  - Graphviz → Core.
+  - Wpf → Core.
+  - Demo → Core, Graphviz, Wpf.
+  - Graphviz ↔ Wpf ist verboten.
+  - Alle Graph-Projekte → UserFlow oder Mockup sind verboten.
+- Der WPF-Renderer erhält keine Graphviz-Abhängigkeit. Die Demo setzt beide Schichten ausschließlich als Composition Root zusammen.
+- UserFlow verwendet die Graph-Bibliothek erst später über einen Adapter; die Graph-UI ändert keine UserFlow-Daten direkt.
 - Fachliche Daten bleiben immer beim jeweiligen Host-System.
 
 ## 4. Zielumfang
@@ -75,6 +84,7 @@
 
 ## 8. Aktueller Status
 - Masterplan und GitHub-Backlog sind angelegt.
-- Eigenständiges Repository und leere Solution-Struktur existieren.
-- Arbeitsbranch für `P0-001 – Solution-Struktur und Isolationsgrenzen` ist erstellt.
-- Nächster Schritt: P0-001 fachlich abschließen und erst danach die konkrete Projektstruktur freigeben.
+- Eigenständiges Repository und die verbindliche leere `VIA.WPF.Graph.slnx` existieren.
+- P0-001 dokumentiert Solution-Format, Repository-Konvention, Zielprojekte, Root-Namespaces und Isolationsgrenzen.
+- P0-001 erzeugt keine Projekt-, NuGet-, C#- oder XAML-Dateien.
+- Nächster Schritt nach ausdrücklichem Step-Gate: technische Phase-0-Verifikation von Rubjerg.Graphviz, Runtime, Deployment und neutralem Datenmodellrahmen.
