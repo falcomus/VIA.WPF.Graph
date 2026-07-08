@@ -5,6 +5,7 @@
         Title="VIA.WPF.Graph – Phase 5 Demo Testsets"
         Width="1420"
         Height="880"
+        WindowState="Maximized"
         MinWidth="1100"
         MinHeight="700">
   <Grid Margin="18">
