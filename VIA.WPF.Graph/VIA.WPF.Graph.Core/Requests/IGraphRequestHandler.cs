@@ -6,5 +6,7 @@ namespace VIA.WPF.Graph.Core.Requests;
 /// </summary>
 public interface IGraphRequestHandler
 {
+    GraphHostCapabilities Capabilities { get; }
+
     ValueTask<GraphRequestResult> HandleAsync(GraphRequest request, CancellationToken cancellationToken = default);
 }
