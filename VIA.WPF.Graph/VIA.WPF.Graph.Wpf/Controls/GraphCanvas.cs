@@ -73,21 +73,54 @@ public sealed class GraphCanvas : FrameworkElement
             OnViewportPropertyChanged),
         IsFiniteDouble);
 
+    public static readonly DependencyProperty SelectedNodeIdsProperty = DependencyProperty.Register(
+        nameof(SelectedNodeIds),
+        typeof(IReadOnlyList<string>),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            Array.Empty<string>(),
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnSelectionPropertyChanged));
+
+    public static readonly DependencyProperty SelectedLinkIdsProperty = DependencyProperty.Register(
+        nameof(SelectedLinkIds),
+        typeof(IReadOnlyList<string>),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            Array.Empty<string>(),
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnSelectionPropertyChanged));
+
+    public static readonly DependencyProperty SelectedGroupIdsProperty = DependencyProperty.Register(
+        nameof(SelectedGroupIds),
+        typeof(IReadOnlyList<string>),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            Array.Empty<string>(),
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnSelectionPropertyChanged));
+
     private const double DefaultTextSize = 12d;
     private const double NodeCornerRadius = 5d;
     private const double ArrowLength = 10d;
     private const double ArrowHalfWidth = 4.5d;
     private const double ZoomWheelFactor = 1.1d;
     private const double DefaultFitPadding = 32d;
+    private const double EdgeHitTolerance = 6d;
 
     private static readonly Brush BackgroundBrush = CreateFrozenBrush(Color.FromRgb(248, 248, 248));
     private static readonly Brush GroupFillBrush = CreateFrozenBrush(Color.FromArgb(20, 96, 125, 139));
+    private static readonly Brush SelectedGroupFillBrush = CreateFrozenBrush(Color.FromArgb(32, 30, 115, 190));
     private static readonly Brush NodeFillBrush = Brushes.White;
     private static readonly Brush TextBrush = Brushes.Black;
+    private static readonly Brush SelectionBrush = CreateFrozenBrush(Color.FromRgb(30, 115, 190));
     private static readonly Pen GroupPen = CreateFrozenPen(Color.FromRgb(96, 125, 139), 1.25d, DashStyles.Dash);
+    private static readonly Pen SelectedGroupPen = CreateFrozenPen(Color.FromRgb(30, 115, 190), 2.25d, DashStyles.Dash);
     private static readonly Pen EdgePen = CreateFrozenPen(Color.FromRgb(84, 96, 108), 1.5d, DashStyles.Solid);
+    private static readonly Pen SelectedEdgePen = CreateFrozenPen(Color.FromRgb(30, 115, 190), 2.5d, DashStyles.Solid);
     private static readonly Pen FallbackEdgePen = CreateFrozenPen(Color.FromRgb(120, 120, 120), 1.5d, DashStyles.Dash);
     private static readonly Pen NodePen = CreateFrozenPen(Color.FromRgb(84, 96, 108), 1.25d, DashStyles.Solid);
+    private static readonly Pen SelectedNodePen = CreateFrozenPen(Color.FromRgb(30, 115, 190), 2.5d, DashStyles.Solid);
     private static readonly Typeface TextTypeface = new("Segoe UI");
 
     private readonly GraphCanvasLayer groupLayer = new();
@@ -144,6 +177,24 @@ public sealed class GraphCanvas : FrameworkElement
     {
         get => (double)GetValue(PanYProperty);
         set => SetValue(PanYProperty, value);
+    }
+
+    public IReadOnlyList<string> SelectedNodeIds
+    {
+        get => (IReadOnlyList<string>?)GetValue(SelectedNodeIdsProperty) ?? Array.Empty<string>();
+        set => SetValue(SelectedNodeIdsProperty, CopySelection(value));
+    }
+
+    public IReadOnlyList<string> SelectedLinkIds
+    {
+        get => (IReadOnlyList<string>?)GetValue(SelectedLinkIdsProperty) ?? Array.Empty<string>();
+        set => SetValue(SelectedLinkIdsProperty, CopySelection(value));
+    }
+
+    public IReadOnlyList<string> SelectedGroupIds
+    {
+        get => (IReadOnlyList<string>?)GetValue(SelectedGroupIdsProperty) ?? Array.Empty<string>();
+        set => SetValue(SelectedGroupIdsProperty, CopySelection(value));
     }
 
     protected override int VisualChildrenCount => 3;
@@ -236,17 +287,27 @@ public sealed class GraphCanvas : FrameworkElement
     {
         base.OnMouseDown(e);
 
-        if (e.ChangedButton != MouseButton.Middle && e.ChangedButton != MouseButton.Right)
+        if (e.ChangedButton == MouseButton.Middle || e.ChangedButton == MouseButton.Right)
+        {
+            Focus();
+            CaptureMouse();
+            isPanning = true;
+            lastPanPoint = e.GetPosition(this);
+            previousCursor = Cursor;
+            Cursor = Cursors.SizeAll;
+            e.Handled = true;
+            return;
+        }
+
+        if (e.ChangedButton != MouseButton.Left)
         {
             return;
         }
 
         Focus();
-        CaptureMouse();
-        isPanning = true;
-        lastPanPoint = e.GetPosition(this);
-        previousCursor = Cursor;
-        Cursor = Cursors.SizeAll;
+        bool isMultiSelection = Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+            || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+        ApplyHitSelection(HitTestGraph(e.GetPosition(this)), isMultiSelection);
         e.Handled = true;
     }
 
@@ -313,6 +374,13 @@ public sealed class GraphCanvas : FrameworkElement
         canvas.CoerceValue(ZoomProperty);
     }
 
+    private static void OnSelectionPropertyChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
+    {
+        GraphCanvas canvas = (GraphCanvas)dependencyObject;
+        canvas.RenderLayers(canvas.LayoutResult);
+        canvas.InvalidateVisual();
+    }
+
     private static object CoerceZoom(DependencyObject dependencyObject, object baseValue)
     {
         GraphCanvas canvas = (GraphCanvas)dependencyObject;
@@ -347,22 +415,33 @@ public sealed class GraphCanvas : FrameworkElement
             return;
         }
 
-        groupLayer.Render(drawingContext => DrawGroups(drawingContext, layoutResult.Groups));
-        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges));
-        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes));
+        HashSet<string> selectedGroupIds = ToSelectionSet(SelectedGroupIds);
+        HashSet<string> selectedLinkIds = ToSelectionSet(SelectedLinkIds);
+        HashSet<string> selectedNodeIds = ToSelectionSet(SelectedNodeIds);
+
+        groupLayer.Render(drawingContext => DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds));
+        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges, selectedLinkIds));
+        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes, selectedNodeIds));
     }
 
-    private void DrawGroups(DrawingContext drawingContext, IReadOnlyList<GraphLayoutGroup> groups)
+    private void DrawGroups(
+        DrawingContext drawingContext,
+        IReadOnlyList<GraphLayoutGroup> groups,
+        IReadOnlySet<string> selectedGroupIds)
     {
         foreach (GraphLayoutGroup group in groups)
         {
+            bool isSelected = selectedGroupIds.Contains(group.GroupId);
             Rect rect = ToRect(group.Bounds);
-            drawingContext.DrawRectangle(GroupFillBrush, GroupPen, rect);
-            DrawText(drawingContext, group.GroupId, rect, TextBrush, TextAlignment.Left, 8d, 4d);
+            drawingContext.DrawRectangle(isSelected ? SelectedGroupFillBrush : GroupFillBrush, isSelected ? SelectedGroupPen : GroupPen, rect);
+            DrawText(drawingContext, group.GroupId, rect, isSelected ? SelectionBrush : TextBrush, TextAlignment.Left, 8d, 4d);
         }
     }
 
-    private void DrawEdges(DrawingContext drawingContext, IReadOnlyList<GraphLayoutEdge> edges)
+    private void DrawEdges(
+        DrawingContext drawingContext,
+        IReadOnlyList<GraphLayoutEdge> edges,
+        IReadOnlySet<string> selectedLinkIds)
     {
         foreach (GraphLayoutEdge edge in edges)
         {
@@ -371,7 +450,8 @@ public sealed class GraphCanvas : FrameworkElement
                 continue;
             }
 
-            Pen pen = edge.UsesFallbackGeometry ? FallbackEdgePen : EdgePen;
+            bool isSelected = selectedLinkIds.Contains(edge.LinkId);
+            Pen pen = isSelected ? SelectedEdgePen : edge.UsesFallbackGeometry ? FallbackEdgePen : EdgePen;
             StreamGeometry lineGeometry = CreatePolylineGeometry(edge.Points);
             drawingContext.DrawGeometry(null, pen, lineGeometry);
 
@@ -383,13 +463,17 @@ public sealed class GraphCanvas : FrameworkElement
         }
     }
 
-    private void DrawNodes(DrawingContext drawingContext, IReadOnlyList<GraphLayoutNode> nodes)
+    private void DrawNodes(
+        DrawingContext drawingContext,
+        IReadOnlyList<GraphLayoutNode> nodes,
+        IReadOnlySet<string> selectedNodeIds)
     {
         foreach (GraphLayoutNode node in nodes)
         {
+            bool isSelected = selectedNodeIds.Contains(node.NodeId);
             Rect rect = ToRect(node.Bounds);
-            drawingContext.DrawRoundedRectangle(NodeFillBrush, NodePen, rect, NodeCornerRadius, NodeCornerRadius);
-            DrawText(drawingContext, node.NodeId, rect, TextBrush, TextAlignment.Center, 6d, 0d);
+            drawingContext.DrawRoundedRectangle(NodeFillBrush, isSelected ? SelectedNodePen : NodePen, rect, NodeCornerRadius, NodeCornerRadius);
+            DrawText(drawingContext, node.NodeId, rect, isSelected ? SelectionBrush : TextBrush, TextAlignment.Center, 6d, 0d);
         }
     }
 
@@ -426,6 +510,190 @@ public sealed class GraphCanvas : FrameworkElement
 
         double y = bounds.Y + verticalPadding + Math.Max(0d, (availableHeight - formattedText.Height) / 2d);
         drawingContext.DrawText(formattedText, new Point(bounds.X + horizontalPadding, y));
+    }
+
+    private GraphCanvasHit? HitTestGraph(Point viewPoint)
+    {
+        GraphLayoutResult? layoutResult = LayoutResult;
+        if (layoutResult is null || !layoutResult.Succeeded)
+        {
+            return null;
+        }
+
+        Point contentPoint = ViewToContent(viewPoint);
+
+        for (int index = layoutResult.Nodes.Count - 1; index >= 0; index--)
+        {
+            GraphLayoutNode node = layoutResult.Nodes[index];
+            if (ToRect(node.Bounds).Contains(contentPoint))
+            {
+                return new GraphCanvasHit(GraphCanvasHitKind.Node, node.NodeId);
+            }
+        }
+
+        double edgeTolerance = EdgeHitTolerance / Math.Max(Zoom, 0.000001d);
+        foreach (GraphLayoutEdge edge in layoutResult.Edges)
+        {
+            if (edge.Points.Count < 2)
+            {
+                continue;
+            }
+
+            if (IsPointNearPolyline(contentPoint, edge.Points, edgeTolerance))
+            {
+                return new GraphCanvasHit(GraphCanvasHitKind.Link, edge.LinkId);
+            }
+        }
+
+        for (int index = layoutResult.Groups.Count - 1; index >= 0; index--)
+        {
+            GraphLayoutGroup group = layoutResult.Groups[index];
+            if (ToRect(group.Bounds).Contains(contentPoint))
+            {
+                return new GraphCanvasHit(GraphCanvasHitKind.Group, group.GroupId);
+            }
+        }
+
+        return null;
+    }
+
+    private void ApplyHitSelection(GraphCanvasHit? hit, bool isMultiSelection)
+    {
+        if (hit is null)
+        {
+            if (!isMultiSelection)
+            {
+                ClearSelection();
+            }
+
+            return;
+        }
+
+        switch (hit.Kind)
+        {
+            case GraphCanvasHitKind.Node:
+                SetCurrentValue(SelectedNodeIdsProperty, UpdateSelection(SelectedNodeIds, hit.Id, isMultiSelection));
+                if (!isMultiSelection)
+                {
+                    SetCurrentValue(SelectedLinkIdsProperty, Array.Empty<string>());
+                    SetCurrentValue(SelectedGroupIdsProperty, Array.Empty<string>());
+                }
+                break;
+            case GraphCanvasHitKind.Link:
+                SetCurrentValue(SelectedLinkIdsProperty, UpdateSelection(SelectedLinkIds, hit.Id, isMultiSelection));
+                if (!isMultiSelection)
+                {
+                    SetCurrentValue(SelectedNodeIdsProperty, Array.Empty<string>());
+                    SetCurrentValue(SelectedGroupIdsProperty, Array.Empty<string>());
+                }
+                break;
+            case GraphCanvasHitKind.Group:
+                SetCurrentValue(SelectedGroupIdsProperty, UpdateSelection(SelectedGroupIds, hit.Id, isMultiSelection));
+                if (!isMultiSelection)
+                {
+                    SetCurrentValue(SelectedNodeIdsProperty, Array.Empty<string>());
+                    SetCurrentValue(SelectedLinkIdsProperty, Array.Empty<string>());
+                }
+                break;
+            default:
+                throw new InvalidOperationException($"Unsupported graph canvas hit kind '{hit.Kind}'.");
+        }
+    }
+
+    private void ClearSelection()
+    {
+        SetCurrentValue(SelectedNodeIdsProperty, Array.Empty<string>());
+        SetCurrentValue(SelectedLinkIdsProperty, Array.Empty<string>());
+        SetCurrentValue(SelectedGroupIdsProperty, Array.Empty<string>());
+    }
+
+    private Point ViewToContent(Point viewPoint)
+    {
+        return new Point(
+            (viewPoint.X - PanX) / Zoom,
+            (viewPoint.Y - PanY) / Zoom);
+    }
+
+    private static IReadOnlyList<string> UpdateSelection(
+        IReadOnlyList<string> currentSelection,
+        string id,
+        bool isMultiSelection)
+    {
+        if (!isMultiSelection)
+        {
+            return [id];
+        }
+
+        List<string> values = currentSelection
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        int existingIndex = values.FindIndex(value => StringComparer.Ordinal.Equals(value, id));
+        if (existingIndex >= 0)
+        {
+            values.RemoveAt(existingIndex);
+        }
+        else
+        {
+            values.Add(id);
+        }
+
+        return values.Count == 0 ? Array.Empty<string>() : values.ToArray();
+    }
+
+    private static IReadOnlyList<string> CopySelection(IEnumerable<string>? values)
+    {
+        if (values is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        return values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static HashSet<string> ToSelectionSet(IEnumerable<string> values)
+    {
+        return new HashSet<string>(values, StringComparer.Ordinal);
+    }
+
+    private static bool IsPointNearPolyline(Point point, IReadOnlyList<GraphPoint> polylinePoints, double tolerance)
+    {
+        double toleranceSquared = tolerance * tolerance;
+
+        for (int index = 0; index < polylinePoints.Count - 1; index++)
+        {
+            if (GetSquaredDistanceToSegment(point, ToPoint(polylinePoints[index]), ToPoint(polylinePoints[index + 1])) <= toleranceSquared)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static double GetSquaredDistanceToSegment(Point point, Point start, Point end)
+    {
+        double segmentX = end.X - start.X;
+        double segmentY = end.Y - start.Y;
+        double segmentLengthSquared = (segmentX * segmentX) + (segmentY * segmentY);
+        if (segmentLengthSquared <= 0.000001d)
+        {
+            double pointDeltaX = point.X - start.X;
+            double pointDeltaY = point.Y - start.Y;
+            return (pointDeltaX * pointDeltaX) + (pointDeltaY * pointDeltaY);
+        }
+
+        double projection = (((point.X - start.X) * segmentX) + ((point.Y - start.Y) * segmentY)) / segmentLengthSquared;
+        double clampedProjection = Math.Clamp(projection, 0d, 1d);
+        double closestX = start.X + (clampedProjection * segmentX);
+        double closestY = start.Y + (clampedProjection * segmentY);
+        double deltaX = point.X - closestX;
+        double deltaY = point.Y - closestY;
+        return (deltaX * deltaX) + (deltaY * deltaY);
     }
 
     private static StreamGeometry CreatePolylineGeometry(IReadOnlyList<GraphPoint> points)
@@ -548,4 +816,13 @@ public sealed class GraphCanvas : FrameworkElement
         Cursor = previousCursor;
         previousCursor = null;
     }
+
+    private enum GraphCanvasHitKind
+    {
+        Node,
+        Link,
+        Group,
+    }
+
+    private sealed record GraphCanvasHit(GraphCanvasHitKind Kind, string Id);
 }
