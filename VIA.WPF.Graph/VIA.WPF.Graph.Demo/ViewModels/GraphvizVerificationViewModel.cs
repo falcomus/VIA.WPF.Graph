@@ -59,6 +59,23 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     private string resultText = "Phase 5 testsets are ready.";
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ApplyMarkerGroupSelectionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(FocusMarkerGroupCommand))]
+    private string? selectedMarkerGroupId;
+
+    [ObservableProperty]
+    private IReadOnlyList<string> selectedGroupIds = Array.Empty<string>();
+
+    [ObservableProperty]
+    private bool isMarkerGroupFilterEnabled;
+
+    [ObservableProperty]
+    private string? focusedGroupId;
+
+    [ObservableProperty]
+    private string markerGroupStatusText = "No marker groups in the current testset.";
+
+    [ObservableProperty]
     private string technicalDetails = string.Empty;
 
     public GraphvizVerificationViewModel()
@@ -75,6 +92,8 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     }
 
     public ObservableCollection<GraphDemoTestSet> TestSets { get; }
+
+    public ObservableCollection<string> MarkerGroupIds { get; } = [];
 
     public IReadOnlyList<GraphLayoutDirection> LayoutDirections { get; }
 
@@ -125,6 +144,7 @@ public partial class GraphvizVerificationViewModel : ObservableObject
             TechnicalDetails = string.Empty;
             CurrentDocument = testSet.Document;
             CurrentLayout = null;
+            UpdateMarkerGroups(testSet.Document);
             ActiveViewMode = testSet.DefaultViewMode;
             VisualDensity = testSet.DefaultVisualDensity;
             IsFreeNavigationEnabled = false;
@@ -143,7 +163,7 @@ public partial class GraphvizVerificationViewModel : ObservableObject
             TechnicalDetails = CreateTechnicalDetails(testSet, validation, layoutResult, stopwatch.Elapsed);
             ResultText = layoutResult.Succeeded
                 ? $"{testSet.Name}: {testSet.NodeCount} nodes, {testSet.LinkCount} links, {testSet.GroupCount} groups laid out in {stopwatch.ElapsedMilliseconds} ms."
-                : $"{testSet.Name}: layout failed.";
+                : $"{testSet.Name}: controlled layout error; see technical details.";
         }
         catch (Exception exception)
         {
@@ -209,6 +229,58 @@ public partial class GraphvizVerificationViewModel : ObservableObject
         CenterRequestVersion++;
     }
 
+    private bool HasSelectedMarkerGroup()
+    {
+        return !string.IsNullOrWhiteSpace(SelectedMarkerGroupId);
+    }
+
+    [RelayCommand(CanExecute = nameof(HasSelectedMarkerGroup))]
+    private void ApplyMarkerGroupSelection()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedMarkerGroupId))
+        {
+            return;
+        }
+
+        SelectedGroupIds = [SelectedMarkerGroupId];
+        IsMarkerGroupFilterEnabled = true;
+        FocusedGroupId = null;
+        ActiveViewMode = GraphViewMode.Overview;
+        IsFreeNavigationEnabled = false;
+        MarkerGroupStatusText = $"Marker group '{SelectedMarkerGroupId}' is selected and used as filter.";
+        RequestFit();
+    }
+
+    [RelayCommand(CanExecute = nameof(HasSelectedMarkerGroup))]
+    private void FocusMarkerGroup()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedMarkerGroupId))
+        {
+            return;
+        }
+
+        SelectedGroupIds = [SelectedMarkerGroupId];
+        IsMarkerGroupFilterEnabled = false;
+        IsFreeNavigationEnabled = true;
+        ActiveViewMode = GraphViewMode.Focus;
+        FocusedGroupId = SelectedMarkerGroupId;
+        MarkerGroupStatusText = $"Marker group '{SelectedMarkerGroupId}' is focused. Free navigation prevents automatic refit.";
+    }
+
+    [RelayCommand]
+    private void ClearMarkerGroups()
+    {
+        SelectedGroupIds = Array.Empty<string>();
+        IsMarkerGroupFilterEnabled = false;
+        FocusedGroupId = null;
+        ActiveViewMode = GraphViewMode.Overview;
+        IsFreeNavigationEnabled = false;
+        MarkerGroupStatusText = MarkerGroupIds.Count == 0
+            ? "No marker groups in the current testset."
+            : "Marker group selection is cleared.";
+        RequestFit();
+    }
+
     [RelayCommand]
     private void SetCompactDensity()
     {
@@ -224,6 +296,23 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     private void RequestFit()
     {
         FitRequestVersion++;
+    }
+
+    private void UpdateMarkerGroups(GraphDocument document)
+    {
+        MarkerGroupIds.Clear();
+        foreach (GraphGroup markerGroup in document.Groups.Where(group => group.Kind == GraphGroupKind.Marker))
+        {
+            MarkerGroupIds.Add(markerGroup.Id);
+        }
+
+        SelectedMarkerGroupId = MarkerGroupIds.FirstOrDefault();
+        SelectedGroupIds = Array.Empty<string>();
+        IsMarkerGroupFilterEnabled = false;
+        FocusedGroupId = null;
+        MarkerGroupStatusText = MarkerGroupIds.Count == 0
+            ? "No marker groups in the current testset."
+            : $"{MarkerGroupIds.Count} marker groups available.";
     }
 
     private static string CreateTechnicalDetails(

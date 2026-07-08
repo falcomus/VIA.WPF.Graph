@@ -20,7 +20,7 @@
                    FontWeight="SemiBold"
                    Text="Phase 5 – Demo-Testsets" />
         <TextBlock Margin="0,6,0,0"
-                   Text="Small, Medium und Large validieren neutrale Graphdokumente, Graphviz-Layout und WPF-Rendering vor der UserFlow-Integration."
+                   Text="Small, Medium, Large, Groups und Error validieren neutrale Graphdokumente, Graphviz-Layout, WPF-Rendering und kontrollierte Fehlerfälle vor der UserFlow-Integration."
                    TextWrapping="Wrap" />
         <TextBlock Margin="0,6,0,0"
                    FontWeight="SemiBold"
@@ -114,6 +114,31 @@
                        Text="Mausrad zoomt. Rechte oder mittlere Maustaste ziehen verschiebt den Graph."
                        TextWrapping="Wrap" />
 
+
+            <Separator Margin="0,14,0,14" />
+
+            <TextBlock FontWeight="SemiBold"
+                       Text="Markierungsgruppen" />
+            <ComboBox Margin="0,6,0,8"
+                      ItemsSource="{Binding MarkerGroupIds}"
+                      SelectedItem="{Binding SelectedMarkerGroupId, Mode=TwoWay}" />
+            <UniformGrid Columns="3">
+              <Button Margin="0,0,4,0"
+                      Padding="10,7"
+                      Command="{Binding ApplyMarkerGroupSelectionCommand}"
+                      Content="Filter" />
+              <Button Margin="4,0,4,0"
+                      Padding="10,7"
+                      Command="{Binding FocusMarkerGroupCommand}"
+                      Content="Fokus" />
+              <Button Margin="4,0,0,0"
+                      Padding="10,7"
+                      Command="{Binding ClearMarkerGroupsCommand}"
+                      Content="Clear" />
+            </UniformGrid>
+            <TextBlock Margin="0,8,0,0"
+                       Text="{Binding MarkerGroupStatusText}"
+                       TextWrapping="Wrap" />
             <Separator Margin="0,14,0,14" />
 
             <TextBlock FontWeight="SemiBold"
@@ -170,6 +195,9 @@
                                    LayoutResult="{Binding CurrentLayout}"
                                    ActiveViewMode="{Binding ActiveViewMode, Mode=TwoWay}"
                                    VisualDensity="{Binding VisualDensity, Mode=TwoWay}"
+                                   SelectedGroupIds="{Binding SelectedGroupIds, Mode=OneWay}"
+                                   IsMarkerGroupFilterEnabled="{Binding IsMarkerGroupFilterEnabled, Mode=OneWay}"
+                                   FocusedGroupId="{Binding FocusedGroupId, Mode=OneWay}"
                                    Zoom="{Binding Zoom, Mode=TwoWay}"
                                    PanX="{Binding PanX, Mode=TwoWay}"
                                    PanY="{Binding PanY, Mode=TwoWay}" />

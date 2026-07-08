@@ -10,7 +10,9 @@ public static class GraphDemoTestSetFactory
         [
             CreateSmall(),
             CreateMedium(),
-            CreateLarge()
+            CreateLarge(),
+            CreateGroups(),
+            CreateError()
         ];
     }
 
@@ -238,6 +240,114 @@ public static class GraphDemoTestSetFactory
             new GraphDocument("demo-large", nodes, links, groups: groups),
             GraphViewMode.Overview,
             0.75d);
+    }
+
+
+
+    public static GraphDemoTestSet CreateGroups()
+    {
+        GraphGroup[] groups =
+        [
+            new("entry", "Entry", GraphGroupKind.Container),
+            new("work", "Work", GraphGroupKind.Container),
+            new("approval", "Approval", GraphGroupKind.Container),
+            new("archive", "Archive", GraphGroupKind.Container),
+            new("critical", "Critical", GraphGroupKind.Marker),
+            new("review", "Review", GraphGroupKind.Marker),
+            new("mobile", "Mobile", GraphGroupKind.Marker),
+            new("admin", "Admin", GraphGroupKind.Marker)
+        ];
+
+        GraphNode[] nodes =
+        [
+            CreateNode("entry_start", "Entry start", "entry", "critical"),
+            new("entry_mobile", "Mobile entry", defaultSize: GraphSize.Standard, groupMemberships: ["entry", "mobile", "critical"]),
+            new("entry_admin", "Admin entry", defaultSize: GraphSize.Standard, groupMemberships: ["entry", "admin", "review"]),
+            CreateNode("entry_help", "Entry help", "entry", kind: GraphNodeKind.Popup, size: GraphSize.Popup),
+
+            new("work_queue", "Work queue", defaultSize: GraphSize.Standard, groupMemberships: ["work", "critical"]),
+            new("work_details", "Work details", defaultSize: GraphSize.Standard, groupMemberships: ["work", "review", "mobile"]),
+            new("work_edit", "Work edit", defaultSize: GraphSize.Standard, groupMemberships: ["work", "admin", "review"]),
+            CreateNode("work_info_popup", "Work info", "work", kind: GraphNodeKind.Popup, size: GraphSize.Popup),
+
+            new("approval_check", "Approval check", defaultSize: GraphSize.Standard, groupMemberships: ["approval", "critical", "review"]),
+            new("approval_manager", "Manager approval", defaultSize: GraphSize.Standard, groupMemberships: ["approval", "admin"]),
+            new("approval_external", "External approval", kind: GraphNodeKind.External, defaultSize: GraphSize.Stub, groupMemberships: ["approval", "critical"]),
+            new("approval_reject", "Reject", defaultSize: GraphSize.Standard, groupMemberships: ["approval", "review"]),
+
+            CreateNode("archive_prepare", "Prepare archive", "archive"),
+            new("archive_store", "Store", defaultSize: GraphSize.Standard, groupMemberships: ["archive", "admin"]),
+            new("archive_mobile", "Mobile archive", defaultSize: GraphSize.Standard, groupMemberships: ["archive", "mobile"]),
+            CreateNode("archive_done", "Done", "archive", "critical")
+        ];
+
+        GraphLink[] links =
+        [
+            new("entry_start_entry_mobile", "entry_start", "entry_mobile", kind: GraphLinkKind.Primary),
+            new("entry_start_entry_admin", "entry_start", "entry_admin", kind: GraphLinkKind.Secondary),
+            new("entry_mobile_entry_help", "entry_mobile", "entry_help", kind: GraphLinkKind.PopupOpen, lineStyle: GraphLineStyle.Dashed),
+            new("entry_help_work_queue", "entry_help", "work_queue", kind: GraphLinkKind.PopupClose, lineStyle: GraphLineStyle.Dashed),
+            new("entry_admin_work_queue", "entry_admin", "work_queue", kind: GraphLinkKind.Primary),
+
+            new("work_queue_work_details", "work_queue", "work_details", kind: GraphLinkKind.Primary),
+            new("work_details_work_edit", "work_details", "work_edit", kind: GraphLinkKind.Primary),
+            new("work_details_work_info_popup", "work_details", "work_info_popup", kind: GraphLinkKind.PopupOpen, lineStyle: GraphLineStyle.Dashed),
+            new("work_info_popup_approval_check", "work_info_popup", "approval_check", kind: GraphLinkKind.PopupClose, lineStyle: GraphLineStyle.Dashed),
+            new("work_edit_approval_check", "work_edit", "approval_check", kind: GraphLinkKind.Primary),
+
+            new("approval_check_approval_manager", "approval_check", "approval_manager", kind: GraphLinkKind.Primary),
+            new("approval_check_approval_external", "approval_check", "approval_external", kind: GraphLinkKind.External, lineStyle: GraphLineStyle.Dotted),
+            new("approval_manager_archive_prepare", "approval_manager", "archive_prepare", kind: GraphLinkKind.Primary),
+            new("approval_manager_reject", "approval_manager", "approval_reject", kind: GraphLinkKind.Cancel, lineStyle: GraphLineStyle.Dashed),
+            new("approval_reject_work_details_back", "approval_reject", "work_details", kind: GraphLinkKind.Back, lineStyle: GraphLineStyle.Dashed),
+
+            new("archive_prepare_archive_store", "archive_prepare", "archive_store", kind: GraphLinkKind.Primary),
+            new("archive_store_archive_done", "archive_store", "archive_done", kind: GraphLinkKind.Primary),
+            new("archive_mobile_archive_done", "archive_mobile", "archive_done", kind: GraphLinkKind.Secondary),
+            new("work_details_archive_mobile", "work_details", "archive_mobile", kind: GraphLinkKind.Secondary)
+        ];
+
+        return new GraphDemoTestSet(
+            "Groups",
+            "16 nodes with container groups and overlapping marker groups for selection, filter and focus checks.",
+            new GraphDocument("demo-groups", nodes, links, groups: groups),
+            GraphViewMode.Overview,
+            0.9d);
+    }
+
+    public static GraphDemoTestSet CreateError()
+    {
+        GraphGroup[] groups =
+        [
+            new("entry", "Entry", GraphGroupKind.Container),
+            new("review", "Review", GraphGroupKind.Container),
+            new("empty_container", "Empty container", GraphGroupKind.Container),
+            new("critical", "Critical", GraphGroupKind.Marker)
+        ];
+
+        GraphNode[] nodes =
+        [
+            CreateNode("start", "Start", "entry", "critical"),
+            CreateNode("review", "Review", "review", "critical"),
+            CreateNode("approve", "Approve", "review"),
+            CreateNode("isolated", "Isolated", "entry")
+        ];
+
+        GraphLink[] links =
+        [
+            new("start_review", "start", "review", kind: GraphLinkKind.Primary),
+            new("start_review_parallel", "start", "review", kind: GraphLinkKind.Secondary),
+            new("review_self", "review", "review", kind: GraphLinkKind.Diagnostic, lineStyle: GraphLineStyle.Dotted),
+            new("review_missing_target", "review", "missing_target", kind: GraphLinkKind.Secondary),
+            new("approve_start_back", "approve", "start", kind: GraphLinkKind.Back, lineStyle: GraphLineStyle.Dashed)
+        ];
+
+        return new GraphDemoTestSet(
+            "Error",
+            "Controlled error case: missing target, empty group, isolated node, parallel links and self-link.",
+            new GraphDocument("demo-error", nodes, links, groups: groups),
+            GraphViewMode.Diagnostic,
+            1d);
     }
 
     private static GraphNode CreateNode(
