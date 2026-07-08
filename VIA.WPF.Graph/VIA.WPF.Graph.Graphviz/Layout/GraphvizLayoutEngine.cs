@@ -146,13 +146,51 @@ public static class GraphvizLayoutEngine
             edge.SetAttribute("label", link.Label);
         }
 
+        edge.SetAttribute("dir", ToGraphvizDirection(link.Direction));
         edge.SetAttribute("style", ToGraphvizLineStyle(link.LineStyle));
-        edge.SetAttribute("weight", link.Weight.ToString(CultureInfo.InvariantCulture));
 
-        if (!link.IsLayoutConstraint || link.Kind == GraphLinkKind.Back)
+        bool isLayoutConstraint = IsLayoutConstraint(link);
+        edge.SetAttribute("constraint", isLayoutConstraint ? "true" : "false");
+        edge.SetAttribute("weight", ToGraphvizWeight(link, isLayoutConstraint));
+    }
+
+    private static bool IsLayoutConstraint(GraphLink link)
+    {
+        if (!link.IsLayoutConstraint)
         {
-            edge.SetAttribute("constraint", "false");
+            return false;
         }
+
+        return link.Kind switch
+        {
+            GraphLinkKind.Back => false,
+            GraphLinkKind.Reference => false,
+            GraphLinkKind.Diagnostic => false,
+            _ => true,
+        };
+    }
+
+    private static string ToGraphvizWeight(GraphLink link, bool isLayoutConstraint)
+    {
+        double effectiveWeight = isLayoutConstraint
+            ? GetLayoutWeight(link)
+            : 0.1d;
+
+        return effectiveWeight.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static double GetLayoutWeight(GraphLink link)
+    {
+        return link.Kind switch
+        {
+            GraphLinkKind.Primary => Math.Max(link.Weight, 3d),
+            GraphLinkKind.Secondary => Math.Max(link.Weight, 1d),
+            GraphLinkKind.PopupOpen => Math.Max(link.Weight, 0.5d),
+            GraphLinkKind.PopupClose => Math.Max(link.Weight, 0.25d),
+            GraphLinkKind.Cancel => Math.Max(link.Weight, 0.75d),
+            GraphLinkKind.External => Math.Max(link.Weight, 0.5d),
+            _ => link.Weight,
+        };
     }
 
     private static GraphLayoutNode CreateLayoutNode(RootGraph layout, GraphNode graphNode)
@@ -257,6 +295,15 @@ public static class GraphvizLayoutEngine
             GraphEdgeRoutingStyle.Polyline => "polyline",
             GraphEdgeRoutingStyle.Orthogonal => "ortho",
             _ => "true",
+        };
+    }
+
+    private static string ToGraphvizDirection(GraphLinkDirection direction)
+    {
+        return direction switch
+        {
+            GraphLinkDirection.Undirected => "none",
+            _ => "forward",
         };
     }
 
