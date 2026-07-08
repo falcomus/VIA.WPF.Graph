@@ -1505,3 +1505,151 @@ Phase 8 benötigt vor Code weiterhin gesonderte Entscheidungen zu:
 
 Phase 9 bleibt weiterhin die spätere Stufe für neue Navigation aus Graph oder Tree.
 
+---
+
+# 20. Revision 6 – Library-first-Reihenfolge ab Phase 7
+
+## 20.1 Anlass
+
+Nach Abschluss der allgemeinen Library-Phasen 0 bis 6 wird die UserFlow-Integration bewusst ans Ende verschoben.
+
+Begründung:
+
+- `VIA.WPF.Graph` soll zuerst als vollständig autarke, allgemeine WPF-Graph-Library finalisiert werden.
+- UserFlow darf die Library-Architektur nicht zu früh prägen.
+- Die Library soll vor der ersten Domänenintegration API-, Host-, Demo-, Dokumentations- und Packaging-reif sein.
+- Das GitHub Project Board ist nicht mehr verbindliche Steuerung. Der Masterplan bleibt Single Source of Truth.
+
+Diese Revision ersetzt nicht den bisherigen Masterplantext, sondern legt ab jetzt eine neue verbindliche Arbeitsreihenfolge fest. Frühere Phase-7-/8-/9-/10-Beschreibungen bleiben als fachliche Inhalte erhalten, werden aber durch diese Revision zeitlich nach hinten verschoben.
+
+## 20.2 Neue verbindliche Phasenreihenfolge ab Phase 7
+
+| Neue Phase | Titel | Inhalt |
+|---|---|---|
+| Phase 7 | Library-Finalisierung und Host-Integrationsreife | Öffentliche API, Hostvertrag, Request-/Result-Verhalten, View-State-Bindings, allgemeine Synchronisierung und Host-Neutralität härten. |
+| Phase 8 | Allgemeine UX-/Demo-Abnahme | Allgemeine Demo ohne UserFlow verbessern, Hybridansicht absichern, Navigation, Fokus, Zoom/Pan, Tree+Graph-Verhalten und größere Demo-Abnahme finalisieren. |
+| Phase 9 | Dokumentation, Packaging und Host-Onboarding | Integrationsdokumentation, Paket-/Referenzstruktur, Host-Beispiele, Übergabehinweise und Release-Vorbereitung erstellen. |
+| Phase 10 | UserFlow read-only Adapter und FlowView | Bisherige UserFlow-read-only-Phase. Visualisierung aktueller UserFlow-Daten ohne Mutation. |
+| Phase 11 | UserFlow-Bearbeitung bestehender Actions | Bisherige Phase zur Bearbeitung vorhandener UserFlow-Actions. |
+| Phase 12 | UserFlow neue Navigation | Bisherige Phase zur Erstellung neuer Navigation aus Graph/Tree. |
+| Phase 13 | Optionale Erweiterungen | Bisherige optionale Erweiterungen. |
+
+## 20.3 Neue Phase 7 – Library-Finalisierung und Host-Integrationsreife
+
+### P7-001 – Masterplan auf Library-first-Reihenfolge umstellen
+
+Ziel:
+
+- Masterplan verbindlich auf Library-first-Reihenfolge umstellen.
+- GitHub Project Board aus der verbindlichen Steuerung entfernen.
+- UserFlow an das Ende verschieben.
+- Keine Codeänderung.
+
+Abnahme:
+
+- Masterplan enthält Revision 6.
+- Frühere Inhalte bleiben erhalten.
+- Neue Reihenfolge ist eindeutig.
+- Keine Implementierung erfolgt in P7-001.
+
+### P7-002 – Public API und Hostvertrag prüfen
+
+Ziel:
+
+- Öffentliche API und Hostvertrag auf Integrationsreife prüfen.
+- Neutralität von Core, Graphviz und WPF sicherstellen.
+- Request-/Result-Vertrag, Host-Capabilities und Editierbarkeitsmodell fachlich prüfen.
+- Keine UserFlow-Begriffe oder UserFlow-Abhängigkeiten einführen.
+
+Abnahme:
+
+- API-Oberfläche ist nachvollziehbar.
+- Hostpflichten sind klar.
+- Mutationsgrenze bleibt beim Host.
+- Keine domänenspezifischen Typen in der Library.
+
+### P7-003 – GraphCanvas/View-State-Bindings härten
+
+Ziel:
+
+- Allgemeine Bindings für Zoom, Pan, Auswahl, Gruppen, ViewMode und RequestCommand prüfen.
+- Rebuild-Stabilität allgemein absichern.
+- View-State weiterhin host-owned halten.
+- Keine projektspezifische Persistenz einführen.
+
+Abnahme:
+
+- GraphCanvas bleibt hostneutral.
+- View-State kann vom Host gehalten und wieder angebunden werden.
+- Keine Spiegelkopien oder verdeckte Synchronisationslisten entstehen.
+
+### P7-004 – NavigationPathTree/Graph-Sync allgemein absichern
+
+Ziel:
+
+- Tree/Graph-Synchronisierung ohne Domänenannahmen prüfen.
+- Selection, OpenNode, OpenGroup, ClearSelection und ReturnToOverview allgemein absichern.
+- Zyklensichere Projektion und Referenzknoten-Verhalten prüfen.
+
+Abnahme:
+
+- Tree und Graph arbeiten über neutrale IDs und Requests.
+- Kein Hostmodell wird direkt mutiert.
+- Zyklische Graphen bleiben sicher darstellbar.
+
+### P7-005 – Demo-Host als allgemeine Referenz verbessern
+
+Ziel:
+
+- Demo-Host als allgemeine Referenz für spätere Hosts verbessern.
+- Read-only/editable-Modus, Requestfeedback, Hybridansicht und allgemeine Testdaten klar darstellen.
+- Keine UserFlow-Daten verwenden.
+
+Abnahme:
+
+- Demo zeigt typische Host-Integration ohne Domäne.
+- Demo erklärt die Grenzen zwischen Library und Host.
+- Allgemeine UX ist belastbar genug für spätere Integration.
+
+### P7-006 – Phase-7-Abnahme: Build, Tests, Host-Neutralität
+
+Ziel:
+
+- Phase 7 abschließen.
+- Build und Tests ausführen.
+- Host-Neutralität prüfen.
+- Keine UserFlow-Vorwegnahme.
+
+Abnahme:
+
+- `dotnet test` ist erfolgreich.
+- Keine neuen UserFlow-Abhängigkeiten existieren.
+- Öffentliche API und Demo sind konsistent.
+- Phase 8 wird erst nach ausdrücklicher Freigabe gestartet.
+
+## 20.4 Verbindliche Nicht-Ziele bis einschließlich Phase 9
+
+Bis Phase 9 werden nicht umgesetzt:
+
+- UserFlow-Adapter
+- FlowView-Integration
+- UserFlow-spezifische ViewModels
+- ActionDefinition-ID
+- JSON-/Clone-/Snapshot-Migrationen
+- UserFlow-Editoränderungen
+- Retargeting von UserFlow-Actions
+- neue UserFlow-Navigation
+- neue UserFlow-ActionAreas
+- UserFlow-spezifische Persistenz
+- ein `VIA.WPF.Graph.UserFlow`-Projekt innerhalb der allgemeinen Graph-Library
+
+## 20.5 Arbeitssteuerung ohne GitHub Project Board
+
+Ab Revision 6 gilt:
+
+- Der Masterplan ist die fachliche und architektonische Single Source of Truth.
+- GitHub Issues und GitHub Project Board sind nicht mehr verbindliche Arbeitssteuerung.
+- Arbeitsschritte werden direkt aus dem Masterplan abgeleitet.
+- Git bleibt weiterhin technische Historie.
+- Nach jeder Phase bzw. jedem freigegebenen Arbeitspaket wird gestoppt.
+
