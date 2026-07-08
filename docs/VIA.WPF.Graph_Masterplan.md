@@ -1310,3 +1310,198 @@ Die erste produktive Stufe gilt als fertig, wenn:
 - Parallelkanten, mehrere Roots und ungruppierte Screens sichtbar und fachlich nachvollziehbar bleiben.
 - der aktuelle ActionArea-Editor bei editierbaren Linktypen die stabile Link-Identität nicht verliert.
 
+---
+
+## 19. Revision 5 – Phase-7-Konkretisierung ohne Änderung der bisherigen Masterplan-Inhalte
+
+Diese Revision ergänzt den bestehenden Masterplan ausschließlich um eine präzisere Schrittfolge für Phase 7. Alle vorherigen Abschnitte bleiben fachlich maßgeblich. Diese Ergänzung ersetzt keine bestehenden Architekturregeln, Abnahmebedingungen oder Step-Gates.
+
+### 19.1 Zweck von P7-001
+
+P7-001 ist ein Integrationsentscheid vor Code. Er ist kein Implementierungsschritt und keine Freigabe für Datenmodell-, Persistenz-, Editor- oder Migrationsänderungen.
+
+Ziel von P7-001 ist, den read-only Rahmen für die erste UserFlow-Integration verbindlich festzulegen:
+
+- Adapter ausschließlich auf UserFlow-Seite,
+- `VIA.WPF.Graph` bleibt unverändert UserFlow-frei,
+- UserFlow referenziert `VIA.WPF.Graph.Core`, `VIA.WPF.Graph.Graphviz` und `VIA.WPF.Graph.Wpf`, niemals umgekehrt,
+- keine neue `ActionDefinition.Id` in Phase 7,
+- keine JSON-, Clone-, Snapshot- oder Altprojekt-Migration in Phase 7,
+- keine Änderung am bestehenden ActionArea-Editor in Phase 7,
+- keine Action-Bearbeitung und keine neue Navigation in Phase 7,
+- `NavigateBack` wird read-only zunächst neutral als Rücknavigation dargestellt; ein konkretes Ziel darf nur angezeigt werden, wenn es aus dem aktuell sichtbaren Pfad eindeutig ableitbar ist,
+- alle UserFlow-Daten bleiben Single Source of Truth in den bestehenden Collections.
+
+### 19.2 Vorgeschlagene Teilissues für Phase 7
+
+#### P7-001 – Integrationsentscheid und Schnitt festlegen
+
+Umfang:
+
+- aktuellen Masterplan, aktuellen `VIA.WPF.Graph`-Stand und aktuellen UserFlow-Export gegen Phase 7 prüfen,
+- konkreten Adapterort in der UserFlow-Solution benennen,
+- erlaubte Projektverweise festlegen,
+- read-only Capability-Profil festlegen,
+- Abbildungsregeln für Screens, Popups, ActionAreas und ActionDefinitions festlegen,
+- Rebuild-/Invalidierungsstrategie grob festlegen,
+- Nicht-Ziele und Stopppunkte dokumentieren.
+
+Nicht enthalten:
+
+- keine Implementierung,
+- keine neuen UserFlow-Properties,
+- keine neuen persistenten IDs,
+- keine neuen Datenmodelle für Persistenz,
+- keine Editoränderung,
+- keine Änderung an `VIA.WPF.Graph` wegen UserFlow.
+
+Step-Gate:
+
+- Freigabe des read-only Integrationsschnitts vor P7-002.
+
+#### P7-002 – Read-only UserFlow-Graphprojektion
+
+Umfang:
+
+- UserFlow-seitiger Adapter erzeugt ein neutrales `GraphDocument`,
+- Screens werden zu Standard-Knoten,
+- Popups werden zu Popup-Knoten,
+- Screen-`GroupName` wird zu Screen-Container-Gruppen,
+- Popup-`GroupName` wird zu Popup-Container-Gruppen oder neutralen Popup-Bereichen gemäß P7-001,
+- fehlende Gruppen werden nur in der Projektion als stabile synthetische Gruppe behandelt,
+- `ActionArea.Actions` erzeugen Links,
+- `Navigate`, `NavigateHome`, `NavigateBack`, `ShowPopup`, `OpenURL`, `OpenFile` und ungültige Ziele werden sichtbar und fachlich ehrlich abgebildet,
+- Link-Metadaten enthalten nur transiente Rückverweise für Auswahl und spätere Zuordnung, keine zweite fachliche Collection.
+
+Nicht enthalten:
+
+- keine Mutation von `Project.Screens`, `Project.Popups`, `ActionArea.Actions` oder `ActionDefinition`,
+- keine persistente Link-ID-Migration,
+- keine Action-Bearbeitung.
+
+Step-Gate:
+
+- GraphDocument wird aus Originalcollections erzeugt und bleibt read-only.
+
+#### P7-003 – Layout, Tree und Flow-Host-ViewModel
+
+Umfang:
+
+- Flow-spezifisches ViewModel nach CommunityToolkit.Mvvm-Mustern,
+- hostseitiger Besitz von `GraphDocument`, `GraphLayoutResult`, `GraphTreeProjection` und View-State,
+- Layout über `VIA.WPF.Graph.Graphviz`,
+- Tree-Projektion über `VIA.WPF.Graph.Core`,
+- read-only `GraphRequestCommand` für Auswahl, Öffnen, Fokus, Collapse/Expand und Rückkehr zur Übersicht,
+- abgelehnte oder nicht unterstützte Requests ändern keine UserFlow-Daten.
+
+Nicht enthalten:
+
+- keine Graphmutation,
+- keine Undo-/Redo-Anbindung,
+- keine Persistenz des GraphViewState, sofern nicht separat freigegeben.
+
+Step-Gate:
+
+- Host-ViewModel kann aus dem aktuellen Projekt einen stabilen read-only Graph- und Tree-Zustand erzeugen.
+
+#### P7-004 – FlowView-Hybridansicht
+
+Umfang:
+
+- bestehende `FlowView` wird als Integrationspunkt genutzt,
+- links `GraphNavigationPathTree`, rechts `GraphCanvas`,
+- beide Controls binden ausschließlich an hostseitigen Zustand,
+- Zoom, Pan, Fit, Auswahl, aktiver Bereich und Tree-Expand-Zustand bleiben im Flow-Host-ViewModel,
+- Viewwechsel darf den Graphzustand nicht zerstören.
+
+Nicht enthalten:
+
+- kein neuer allgemeiner Graph-Renderer,
+- keine UserFlow-Typen in `VIA.WPF.Graph.Wpf`,
+- keine direkte Mutation aus Tree oder GraphCanvas.
+
+Step-Gate:
+
+- Hybridansicht zeigt UserFlow read-only und bleibt beim Viewwechsel stabil.
+
+#### P7-005 – Read-only Synchronisierung mit bestehender UserFlow-UI
+
+Umfang:
+
+- Auswahl im Tree setzt hostseitig den passenden Screen-/Popup-Fokus,
+- Auswahl im Graph setzt hostseitig den passenden Screen-/Popup-Fokus,
+- bestehende Screen-/Popup-Auswahl aktualisiert Graph- und Tree-Selektion,
+- `HomeScreen` wird als Root-/Startinformation genutzt,
+- Preview-Navigation darf als Fokus-/Öffnungswunsch genutzt werden, aber nicht als Datenmutation,
+- fehlende Ziele und externe Aktionen bleiben sichtbar statt entfernt zu werden.
+
+Nicht enthalten:
+
+- keine Bearbeitung bestehender Actions,
+- keine neue Navigation,
+- keine neue Preview-Semantik.
+
+Step-Gate:
+
+- Tree, Graph und bestehende UserFlow-Auswahl sind read-only synchron.
+
+#### P7-006 – Abnahme und Tests
+
+Umfang:
+
+- Build der betroffenen Solution,
+- Smoke-Test mit Screens, Popups und Gruppen,
+- Testfälle für `Navigate`, `NavigateHome`, `NavigateBack`, `ShowPopup`, `OpenURL`, `OpenFile`, ungültige `TargetScreenId` und ungültige `PopupId`,
+- Prüfung: keine UserFlow-Collection wurde durch Graph/Tree geändert,
+- Prüfung: Viewwechsel zerstört Graphzustand nicht,
+- Prüfung: `VIA.WPF.Graph` bleibt UserFlow-frei.
+
+Step-Gate:
+
+- fachliche Freigabe der read-only UserFlow-Navigationsansicht. Erst danach darf Phase 8 geplant werden.
+
+### 19.3 Stopppunkte innerhalb Phase 7
+
+Vor Umsetzung ist ausdrücklich anzuhalten, wenn einer der folgenden Punkte notwendig erscheint:
+
+- neue UserFlow-Property,
+- neue persistente ID,
+- JSON-/Clone-/Snapshot-Anpassung,
+- Altprojekt-Migration,
+- Änderung am ActionArea-Editor,
+- neue UserFlow-Datei oder neues Projekt mit architektonischer Relevanz,
+- neue Dependency,
+- Änderung an `VIA.WPF.Graph.Core`, `.Graphviz` oder `.Wpf` wegen UserFlow,
+- direkte Mutation von `Project.Screens`, `Project.Popups`, `ActionArea.Actions` oder `ActionDefinition` aus Graph oder Tree.
+
+### 19.4 Phase-7-Nichtziele
+
+Nicht Bestandteil der read-only Phase 7:
+
+- bestehende Actions öffnen, ändern oder löschen,
+- neue Navigation anlegen,
+- neue ActionAreas erzeugen,
+- `ActionDefinition.Id` einführen,
+- GraphViewState persistieren,
+- Altprojekte migrieren,
+- manuelle Knotenpositionen speichern,
+- ActionArea-Editor erweitern,
+- mehrere Actions pro Trigger fachlich freigeben,
+- `NavigateBack` als statischen Zielscreen behaupten.
+
+### 19.5 Verhältnis zu Phase 8 und Phase 9
+
+Phase 7 liefert nur die read-only Navigationsansicht. Erst nach ihrer Abnahme werden Phase 8 und Phase 9 betrachtet.
+
+Phase 8 benötigt vor Code weiterhin gesonderte Entscheidungen zu:
+
+- stabiler `ActionDefinition.Id`,
+- JSON-/Clone-/Snapshot-Erhalt,
+- ActionArea-Editor-Identitätserhalt,
+- Altprojekt-Migration,
+- Undo-/Redo-Verhalten,
+- erlaubten editierbaren ActionTypes,
+- Behandlung von `NavigateBack`, Popup-Schließen und Mehrfachaktionen pro Trigger.
+
+Phase 9 bleibt weiterhin die spätere Stufe für neue Navigation aus Graph oder Tree.
+
