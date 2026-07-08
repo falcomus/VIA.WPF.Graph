@@ -1,0 +1,364 @@
+﻿<UserControl x:Class="VIA.WPF.Graph.Demo.Views.UIXDemoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:graphControls="clr-namespace:VIA.WPF.Graph.Wpf.Controls;assembly=VIA.WPF.Graph.Wpf">
+  <UserControl.Resources>
+    <DropShadowEffect x:Key="CardElevation"
+                      BlurRadius="18"
+                      ShadowDepth="3"
+                      Opacity="0.13"
+                      Color="#FF2A4257" />
+
+    <Style x:Key="CardBorderStyle"
+           TargetType="{x:Type Border}">
+      <Setter Property="Background"
+              Value="#FFFFFFFF" />
+      <Setter Property="BorderBrush"
+              Value="#FFDDE7F0" />
+      <Setter Property="BorderThickness"
+              Value="1" />
+      <Setter Property="CornerRadius"
+              Value="16" />
+      <Setter Property="Effect"
+              Value="{StaticResource CardElevation}" />
+      <Setter Property="SnapsToDevicePixels"
+              Value="True" />
+    </Style>
+
+    <Style x:Key="ToolbarButtonStyle"
+           TargetType="{x:Type Button}">
+      <Setter Property="MinHeight"
+              Value="34" />
+      <Setter Property="Padding"
+              Value="14,6" />
+      <Setter Property="Margin"
+              Value="0,0,8,0" />
+      <Setter Property="BorderThickness"
+              Value="1" />
+      <Setter Property="BorderBrush"
+              Value="#FFC9D8E6" />
+      <Setter Property="Background"
+              Value="#FFFFFFFF" />
+      <Setter Property="Foreground"
+              Value="#FF26384A" />
+      <Setter Property="FontWeight"
+              Value="SemiBold" />
+      <Setter Property="Cursor"
+              Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type Button}">
+            <Border x:Name="ButtonChrome"
+                    MinHeight="{TemplateBinding MinHeight}"
+                    Padding="{TemplateBinding Padding}"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="11">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver"
+                       Value="True">
+                <Setter TargetName="ButtonChrome"
+                        Property="Background"
+                        Value="#FFF4F8FC" />
+                <Setter TargetName="ButtonChrome"
+                        Property="BorderBrush"
+                        Value="#FF9FB7CC" />
+              </Trigger>
+              <Trigger Property="IsPressed"
+                       Value="True">
+                <Setter TargetName="ButtonChrome"
+                        Property="Background"
+                        Value="#FFE7F0F8" />
+              </Trigger>
+              <Trigger Property="IsEnabled"
+                       Value="False">
+                <Setter Property="Opacity"
+                        Value="0.55" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="PrimaryToolbarButtonStyle"
+           TargetType="{x:Type Button}">
+      <Setter Property="MinHeight"
+              Value="34" />
+      <Setter Property="Padding"
+              Value="14,6" />
+      <Setter Property="Margin"
+              Value="0,0,8,0" />
+      <Setter Property="BorderThickness"
+              Value="1" />
+      <Setter Property="BorderBrush"
+              Value="#FF1E5A96" />
+      <Setter Property="Background"
+              Value="#FF1E5A96" />
+      <Setter Property="Foreground"
+              Value="#FFFFFFFF" />
+      <Setter Property="FontWeight"
+              Value="SemiBold" />
+      <Setter Property="Cursor"
+              Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type Button}">
+            <Border x:Name="ButtonChrome"
+                    MinHeight="{TemplateBinding MinHeight}"
+                    Padding="{TemplateBinding Padding}"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="11">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver"
+                       Value="True">
+                <Setter TargetName="ButtonChrome"
+                        Property="Background"
+                        Value="#FF2468A9" />
+                <Setter TargetName="ButtonChrome"
+                        Property="BorderBrush"
+                        Value="#FF2468A9" />
+              </Trigger>
+              <Trigger Property="IsPressed"
+                       Value="True">
+                <Setter TargetName="ButtonChrome"
+                        Property="Background"
+                        Value="#FF184B7E" />
+              </Trigger>
+              <Trigger Property="IsEnabled"
+                       Value="False">
+                <Setter Property="Opacity"
+                        Value="0.55" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="MutedTextStyle"
+           TargetType="{x:Type TextBlock}">
+      <Setter Property="Foreground"
+              Value="#FF667789" />
+      <Setter Property="TextWrapping"
+              Value="Wrap" />
+    </Style>
+  </UserControl.Resources>
+
+  <Grid Background="#EEF3F8">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0"
+            Margin="20,20,20,12"
+            Padding="20,18"
+            Style="{StaticResource CardBorderStyle}">
+      <DockPanel LastChildFill="False">
+        <StackPanel DockPanel.Dock="Left">
+          <TextBlock FontSize="24"
+                     FontWeight="SemiBold"
+                     Foreground="#FF172435"
+                     Text="Mobile App Navigation – UIX Demo" />
+          <TextBlock Margin="0,5,0,0"
+                     Style="{StaticResource MutedTextStyle}"
+                     Text="Library-neutrales Zielbild: links Pfade und Alternativen, rechts Bereichs- und Graphübersicht mit generischen Demo-Daten." />
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Right"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+          <Border Padding="12,7"
+                  Background="#FFEAF2FA"
+                  BorderBrush="#FFD2E0EC"
+                  BorderThickness="1"
+                  CornerRadius="14">
+            <TextBlock FontWeight="SemiBold"
+                       Foreground="#FF315B7E"
+                       Text="{Binding CountsText}" />
+          </Border>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <Grid Grid.Row="1"
+          Margin="20,0,20,20">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="360" />
+        <ColumnDefinition Width="16" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+
+      <Border Grid.Column="0"
+              Padding="16"
+              Style="{StaticResource CardBorderStyle}">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <StackPanel Grid.Row="0">
+            <TextBlock FontSize="16"
+                       FontWeight="SemiBold"
+                       Foreground="#FF172435"
+                       Text="Navigation Path Tree" />
+            <TextBlock Margin="0,4,0,12"
+                       Style="{StaticResource MutedTextStyle}"
+                       Text="Der Tree zeigt Pfade und Alternativen ab dem Einstieg." />
+          </StackPanel>
+
+          <Border Grid.Row="1"
+                  ClipToBounds="True"
+                  Background="#FFFAFCFE"
+                  BorderBrush="#FFE0E9F2"
+                  BorderThickness="1"
+                  CornerRadius="12">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
+              <graphControls:GraphNavigationPathTree MinWidth="300"
+                                                      Margin="8"
+                                                      Projection="{Binding TreeProjection}"
+                                                      SelectedTreeNodeId="{Binding SelectedTreeNodeId, Mode=TwoWay}"
+                                                      SelectedNodeId="{Binding SelectedNodeId, Mode=TwoWay}"
+                                                      SelectedLinkId="{Binding SelectedLinkId, Mode=TwoWay}"
+                                                      GraphSelectedNodeIds="{Binding SelectedNodeIds}"
+                                                      GraphSelectedLinkIds="{Binding SelectedLinkIds}"
+                                                      GraphRequestCommand="{Binding GraphRequestCommand}" />
+            </ScrollViewer>
+          </Border>
+
+          <Border Grid.Row="2"
+                  Margin="0,14,0,0"
+                  Padding="14"
+                  Background="#FFF7FAFD"
+                  BorderBrush="#FFE1EAF2"
+                  BorderThickness="1"
+                  CornerRadius="14">
+            <StackPanel>
+              <TextBlock FontSize="13"
+                         Foreground="#FF667789"
+                         Text="Selected screen" />
+              <Border Margin="0,8,0,8"
+                      Padding="14"
+                      Background="#FFFFFFFF"
+                      BorderBrush="#FFD6E1EC"
+                      BorderThickness="1"
+                      CornerRadius="13">
+                <StackPanel>
+                  <TextBlock FontSize="17"
+                             FontWeight="SemiBold"
+                             Foreground="#FF172435"
+                             Text="{Binding SelectedScreenTitle}" />
+                  <TextBlock Margin="0,5,0,0"
+                             Style="{StaticResource MutedTextStyle}"
+                             Text="{Binding SelectedScreenSubtitle}" />
+                </StackPanel>
+              </Border>
+              <TextBlock Style="{StaticResource MutedTextStyle}"
+                         Text="{Binding SelectedPathText}" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="2"
+              Padding="16"
+              Style="{StaticResource CardBorderStyle}">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <DockPanel Grid.Row="0"
+                     Margin="0,0,0,12"
+                     LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left">
+              <TextBlock FontSize="16"
+                         FontWeight="SemiBold"
+                         Foreground="#FF172435"
+                         Text="Intelligent graph view" />
+              <TextBlock Margin="0,4,0,0"
+                         Style="{StaticResource MutedTextStyle}"
+                         Text="{Binding ModeText}" />
+            </StackPanel>
+
+            <WrapPanel DockPanel.Dock="Right"
+                       HorizontalAlignment="Right">
+              <Button Style="{StaticResource PrimaryToolbarButtonStyle}"
+                      Command="{Binding ShowAreaOverviewCommand}"
+                      Content="Bereiche" />
+              <Button Style="{StaticResource ToolbarButtonStyle}"
+                      Command="{Binding ShowGraphOverviewCommand}"
+                      Content="Flow" />
+              <Button Style="{StaticResource ToolbarButtonStyle}"
+                      Command="{Binding ShowFocusCommand}"
+                      Content="Fokus" />
+              <Button Style="{StaticResource ToolbarButtonStyle}"
+                      Command="{Binding FitToGraphCommand}"
+                      Content="Fit" />
+              <Button Style="{StaticResource ToolbarButtonStyle}"
+                      Command="{Binding SetActualSizeCommand}"
+                      Content="100 %" />
+              <Button Style="{StaticResource ToolbarButtonStyle}"
+                      Command="{Binding CenterGraphCommand}"
+                      Content="Zentrieren" />
+              <Button Style="{StaticResource ToolbarButtonStyle}"
+                      Command="{Binding ToggleDensityCommand}"
+                      Content="{Binding DensityButtonText}" />
+            </WrapPanel>
+          </DockPanel>
+
+          <Border x:Name="GraphCanvasHost"
+                  Grid.Row="1"
+                  ClipToBounds="True"
+                  Background="#FFF3F7FB"
+                  BorderBrush="#FFD6E1EC"
+                  BorderThickness="1"
+                  CornerRadius="14">
+            <graphControls:GraphCanvas x:Name="GraphCanvasView"
+                                       HorizontalAlignment="Stretch"
+                                       VerticalAlignment="Stretch"
+                                       Document="{Binding CurrentDocument}"
+                                       LayoutResult="{Binding CurrentLayout}"
+                                       ActiveViewMode="{Binding ActiveViewMode, Mode=TwoWay}"
+                                       VisualDensity="{Binding VisualDensity, Mode=TwoWay}"
+                                       SelectedNodeIds="{Binding SelectedNodeIds, Mode=TwoWay}"
+                                       SelectedLinkIds="{Binding SelectedLinkIds, Mode=TwoWay}"
+                                       SelectedGroupIds="{Binding SelectedGroupIds, Mode=TwoWay}"
+                                       FocusedNodeId="{Binding FocusedNodeId, Mode=TwoWay}"
+                                       FocusedGroupId="{Binding FocusedGroupId, Mode=TwoWay}"
+                                       Zoom="{Binding Zoom, Mode=TwoWay}"
+                                       PanX="{Binding PanX, Mode=TwoWay}"
+                                       PanY="{Binding PanY, Mode=TwoWay}"
+                                       GraphRequestCommand="{Binding GraphRequestCommand}" />
+          </Border>
+
+          <Border Grid.Row="2"
+                  Margin="0,12,0,0"
+                  Padding="12,9"
+                  Background="#FFF7FAFD"
+                  BorderBrush="#FFE1EAF2"
+                  BorderThickness="1"
+                  CornerRadius="12">
+            <TextBlock Style="{StaticResource MutedTextStyle}"
+                       Text="Mausrad zoomt. Rechte oder mittlere Maustaste verschiebt den Graph. Der Demo-Graph nutzt bewusst generische Mobile-App-Daten." />
+          </Border>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>
