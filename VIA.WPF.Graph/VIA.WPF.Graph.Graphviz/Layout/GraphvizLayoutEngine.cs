@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Text;
 using Rubjerg.Graphviz;
 using VIA.WPF.Graph.Core.Layout;
 using VIA.WPF.Graph.Core.Model;
@@ -10,7 +13,12 @@ namespace VIA.WPF.Graph.Graphviz.Layout;
 /// </summary>
 public static class GraphvizLayoutEngine
 {
-    public static GraphLayoutResult Layout(GraphDocument document, GraphLayoutOptions? options = null)
+    private static readonly ConcurrentDictionary<string, GraphLayoutResult> LayoutCache = new(StringComparer.Ordinal);
+
+    public static GraphLayoutResult Layout(
+        GraphDocument document,
+        GraphLayoutOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -18,7 +26,25 @@ public static class GraphvizLayoutEngine
 
         try
         {
-            return CreateLayout(document, resolvedOptions);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            string cacheKey = CreateCacheKey(document, resolvedOptions, cancellationToken);
+            if (LayoutCache.TryGetValue(cacheKey, out GraphLayoutResult? cachedResult))
+            {
+                return cachedResult;
+            }
+
+            GraphLayoutResult result = CreateLayout(document, resolvedOptions, cancellationToken);
+            if (result.Succeeded)
+            {
+                LayoutCache.TryAdd(cacheKey, result);
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return CreateCanceledResult(document, resolvedOptions);
         }
         catch (Exception exception)
         {
@@ -32,17 +58,24 @@ public static class GraphvizLayoutEngine
         }
     }
 
-    private static GraphLayoutResult CreateLayout(GraphDocument document, GraphLayoutOptions options)
+    private static GraphLayoutResult CreateLayout(
+        GraphDocument document,
+        GraphLayoutOptions options,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         RootGraph source = RootGraph.CreateNew(GraphType.Directed, "via_wpf_graph_layout");
         source.SetAttribute("rankdir", ToGraphvizRankDirection(options.Direction));
         source.SetAttribute("splines", ToGraphvizSplines(options.EdgeRoutingStyle));
         source.SetAttribute("compound", "true");
 
-        Dictionary<string, Node> sourceNodes = document.Nodes.ToDictionary(
-            node => node.Id,
-            node => CreateSourceNode(source, node),
-            StringComparer.Ordinal);
+        Dictionary<string, Node> sourceNodes = [];
+        foreach (GraphNode node in document.Nodes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            sourceNodes.Add(node.Id, CreateSourceNode(source, node));
+        }
 
         Dictionary<string, GraphGroup> containerGroupsById = document.Groups
             .Where(group => group.Kind == GraphGroupKind.Container)
@@ -55,16 +88,20 @@ public static class GraphvizLayoutEngine
         {
             foreach (GraphGroup group in containerGroupsById.Values)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 SubGraph cluster = source.GetOrAddSubgraph(clusterIdByGroupId[group.Id]);
                 cluster.SetAttribute("label", group.Title);
                 sourceClustersByGroupId[group.Id] = cluster;
             }
 
-            AssignNodesToContainerClusters(document.Nodes, sourceNodes, containerGroupsById, sourceClustersByGroupId);
+            AssignNodesToContainerClusters(document.Nodes, sourceNodes, containerGroupsById, sourceClustersByGroupId, cancellationToken);
         }
 
         foreach (GraphLink link in document.Links)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!sourceNodes.TryGetValue(link.SourceNodeId, out Node? sourceNode)
                 || !sourceNodes.TryGetValue(link.TargetNodeId, out Node? targetNode))
             {
@@ -80,23 +117,37 @@ public static class GraphvizLayoutEngine
             ApplyEdgeAttributes(edge, link);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         RootGraph layout = source.CreateLayout(coordinateSystem: CoordinateSystem.TopLeft);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        IReadOnlyList<GraphLayoutNode> nodes = document.Nodes
-            .Select(node => CreateLayoutNode(layout, node))
-            .ToArray();
+        List<GraphLayoutNode> nodes = [];
+        foreach (GraphNode node in document.Nodes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            nodes.Add(CreateLayoutNode(layout, node));
+        }
 
-        IReadOnlyList<GraphLayoutGroup> groups = options.UseContainerGroupsAsClusters
-            ? containerGroupsById.Values
-                .Select(group => CreateLayoutGroupOrNull(layout, group, clusterIdByGroupId[group.Id]))
-                .Where(group => group is not null)
-                .Cast<GraphLayoutGroup>()
-                .ToArray()
-            : Array.Empty<GraphLayoutGroup>();
+        List<GraphLayoutGroup> groups = [];
+        if (options.UseContainerGroupsAsClusters)
+        {
+            foreach (GraphGroup group in containerGroupsById.Values)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                GraphLayoutGroup? layoutGroup = CreateLayoutGroupOrNull(layout, group, clusterIdByGroupId[group.Id]);
+                if (layoutGroup is not null)
+                {
+                    groups.Add(layoutGroup);
+                }
+            }
+        }
 
-        IReadOnlyList<GraphLayoutEdge> edges = document.Links
-            .Select(link => CreateLayoutEdge(layout, link))
-            .ToArray();
+        List<GraphLayoutEdge> edges = [];
+        foreach (GraphLink link in document.Links)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            edges.Add(CreateLayoutEdge(layout, link));
+        }
 
         return new GraphLayoutResult(
             document.Id,
@@ -105,6 +156,17 @@ public static class GraphvizLayoutEngine
             nodes,
             groups,
             edges);
+    }
+
+    private static GraphLayoutResult CreateCanceledResult(GraphDocument document, GraphLayoutOptions options)
+    {
+        return new GraphLayoutResult(
+            document.Id,
+            options,
+            error: new GraphLayoutError(
+                "Graphviz layout was canceled.",
+                "The layout request was canceled before a complete layout result was available.",
+                typeof(OperationCanceledException).FullName));
     }
 
     private static Node CreateSourceNode(RootGraph source, GraphNode graphNode)
@@ -122,10 +184,13 @@ public static class GraphvizLayoutEngine
         IEnumerable<GraphNode> graphNodes,
         IReadOnlyDictionary<string, Node> sourceNodes,
         IReadOnlyDictionary<string, GraphGroup> containerGroupsById,
-        IReadOnlyDictionary<string, SubGraph> sourceClustersByGroupId)
+        IReadOnlyDictionary<string, SubGraph> sourceClustersByGroupId,
+        CancellationToken cancellationToken)
     {
         foreach (GraphNode graphNode in graphNodes)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             string? containerGroupId = graphNode.GroupMemberships
                 .FirstOrDefault(containerGroupsById.ContainsKey);
 
@@ -278,6 +343,108 @@ public static class GraphvizLayoutEngine
         return string.IsNullOrWhiteSpace(identifier) ? "group" : identifier;
     }
 
+    private static string CreateCacheKey(
+        GraphDocument document,
+        GraphLayoutOptions options,
+        CancellationToken cancellationToken)
+    {
+        StringBuilder builder = new();
+
+        AppendText(builder, document.Id);
+        AppendEnum(builder, options.Direction);
+        AppendEnum(builder, options.EdgeRoutingStyle);
+        AppendBoolean(builder, options.UseContainerGroupsAsClusters);
+
+        AppendCount(builder, document.Nodes.Count);
+        foreach (GraphNode node in document.Nodes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AppendText(builder, node.Id);
+            AppendText(builder, node.Title);
+            AppendEnum(builder, node.Kind);
+            AppendDouble(builder, node.DefaultSize.Width);
+            AppendDouble(builder, node.DefaultSize.Height);
+            AppendText(builder, node.VisualStyleKey);
+            AppendTextList(builder, node.GroupMemberships);
+        }
+
+        AppendCount(builder, document.Groups.Count);
+        foreach (GraphGroup group in document.Groups)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AppendText(builder, group.Id);
+            AppendText(builder, group.Title);
+            AppendEnum(builder, group.Kind);
+            AppendText(builder, group.ParentGroupId);
+            AppendText(builder, group.VisualStyleKey);
+        }
+
+        AppendCount(builder, document.Links.Count);
+        foreach (GraphLink link in document.Links)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AppendText(builder, link.Id);
+            AppendText(builder, link.SourceNodeId);
+            AppendText(builder, link.TargetNodeId);
+            AppendEnum(builder, link.Direction);
+            AppendEnum(builder, link.Kind);
+            AppendText(builder, link.Label);
+            AppendEnum(builder, link.LineStyle);
+            AppendDouble(builder, link.Weight);
+            AppendBoolean(builder, link.IsLayoutConstraint);
+        }
+
+        return builder.ToString();
+    }
+
+    private static void AppendText(StringBuilder builder, string? value)
+    {
+        if (value is null)
+        {
+            builder.Append("-1:");
+            return;
+        }
+
+        builder.Append(value.Length.ToString(CultureInfo.InvariantCulture));
+        builder.Append(':');
+        builder.Append(value);
+        builder.Append('|');
+    }
+
+    private static void AppendTextList(StringBuilder builder, IReadOnlyList<string> values)
+    {
+        AppendCount(builder, values.Count);
+        foreach (string value in values)
+        {
+            AppendText(builder, value);
+        }
+    }
+
+    private static void AppendEnum<TEnum>(StringBuilder builder, TEnum value)
+        where TEnum : struct, Enum
+    {
+        builder.Append(Convert.ToInt32(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture));
+        builder.Append('|');
+    }
+
+    private static void AppendDouble(StringBuilder builder, double value)
+    {
+        builder.Append(value.ToString("R", CultureInfo.InvariantCulture));
+        builder.Append('|');
+    }
+
+    private static void AppendBoolean(StringBuilder builder, bool value)
+    {
+        builder.Append(value ? '1' : '0');
+        builder.Append('|');
+    }
+
+    private static void AppendCount(StringBuilder builder, int count)
+    {
+        builder.Append(count.ToString(CultureInfo.InvariantCulture));
+        builder.Append('|');
+    }
+
     private static string ToGraphvizRankDirection(GraphLayoutDirection direction)
     {
         return direction switch
@@ -315,5 +482,4 @@ public static class GraphvizLayoutEngine
             _ => "solid",
         };
     }
-
 }
