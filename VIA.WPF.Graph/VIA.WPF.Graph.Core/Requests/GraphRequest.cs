@@ -10,13 +10,15 @@ public sealed record GraphRequest
         string? nodeId = null,
         string? linkId = null,
         string? groupId = null,
-        bool isMultiSelection = false)
+        bool isMultiSelection = false,
+        bool? isGroupCollapsed = null)
     {
         Kind = kind;
         NodeId = NormalizeOptionalText(nodeId);
         LinkId = NormalizeOptionalText(linkId);
         GroupId = NormalizeOptionalText(groupId);
         IsMultiSelection = isMultiSelection;
+        IsGroupCollapsed = isGroupCollapsed;
         Validate();
     }
 
@@ -29,6 +31,8 @@ public sealed record GraphRequest
     public string? GroupId { get; }
 
     public bool IsMultiSelection { get; }
+
+    public bool? IsGroupCollapsed { get; }
 
     public static GraphRequest SelectNode(string nodeId, bool isMultiSelection = false)
     {
@@ -70,6 +74,11 @@ public sealed record GraphRequest
         return new GraphRequest(GraphRequestKind.ReturnToOverview);
     }
 
+    public static GraphRequest SetGroupCollapsed(string groupId, bool isCollapsed)
+    {
+        return new GraphRequest(GraphRequestKind.SetGroupCollapsed, groupId: groupId, isGroupCollapsed: isCollapsed);
+    }
+
     private static string? NormalizeOptionalText(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value;
@@ -82,18 +91,26 @@ public sealed record GraphRequest
             case GraphRequestKind.SelectNode:
             case GraphRequestKind.OpenNode:
                 RequireOnlyNodeId();
+                RequireNoGroupCollapsedState();
                 break;
             case GraphRequestKind.SelectLink:
             case GraphRequestKind.OpenLink:
                 RequireOnlyLinkId();
+                RequireNoGroupCollapsedState();
                 break;
             case GraphRequestKind.SelectGroup:
             case GraphRequestKind.OpenGroup:
                 RequireOnlyGroupId();
+                RequireNoGroupCollapsedState();
+                break;
+            case GraphRequestKind.SetGroupCollapsed:
+                RequireOnlyGroupId();
+                RequireGroupCollapsedState();
                 break;
             case GraphRequestKind.ClearSelection:
             case GraphRequestKind.ReturnToOverview:
                 RequireNoSubjectId();
+                RequireNoGroupCollapsedState();
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(Kind), Kind, "Unsupported graph request kind.");
@@ -129,6 +146,22 @@ public sealed record GraphRequest
         if (NodeId is not null || LinkId is not null || GroupId is not null)
         {
             throw new ArgumentException("This graph request kind must not contain a node, link or group id.");
+        }
+    }
+
+    private void RequireGroupCollapsedState()
+    {
+        if (IsGroupCollapsed is null)
+        {
+            throw new ArgumentException("This graph request kind requires a group collapsed state.");
+        }
+    }
+
+    private void RequireNoGroupCollapsedState()
+    {
+        if (IsGroupCollapsed is not null)
+        {
+            throw new ArgumentException("This graph request kind must not contain a group collapsed state.");
         }
     }
 }

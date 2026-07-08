@@ -1,5 +1,6 @@
 using System.Windows;
 using VIA.WPF.Graph.Core.Layout;
+using VIA.WPF.Graph.Core.Requests;
 using VIA.WPF.Graph.Wpf.Controls;
 using VIA.WPF.Graph.Wpf.Tests.Support;
 
@@ -157,6 +158,61 @@ public sealed class GraphCanvasTests
             Assert.Equal(new[] { "node-a", "node-b" }, canvas.SelectedNodeIds);
             Assert.Equal(new[] { "link-a" }, canvas.SelectedLinkIds);
             Assert.Equal(new[] { "group-a", "group-b" }, canvas.SelectedGroupIds);
+        });
+    }
+
+    [Fact]
+    public void CollapsedGroupIds_NormalizeDistinctIds()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphCanvas canvas = new()
+            {
+                CollapsedGroupIds = ["work", "work", " ", "entry"]
+            };
+
+            Assert.Equal(new[] { "work", "entry" }, canvas.CollapsedGroupIds);
+        });
+    }
+
+    [Fact]
+    public void SetGroupCollapsed_UpdatesStateAndSendsRequest()
+    {
+        StaTestRunner.Run(() =>
+        {
+            RecordingGraphRequestCommand command = new();
+            GraphCanvas canvas = CreateArrangedCanvas();
+            canvas.GraphRequestCommand = command;
+
+            bool collapsed = canvas.SetGroupCollapsed("work", isCollapsed: true);
+
+            Assert.True(collapsed);
+            Assert.Equal(new[] { "work" }, canvas.CollapsedGroupIds);
+            GraphRequest request = Assert.Single(command.Requests);
+            Assert.Equal(GraphRequestKind.SetGroupCollapsed, request.Kind);
+            Assert.Equal("work", request.GroupId);
+            Assert.True(request.IsGroupCollapsed);
+        });
+    }
+
+    [Fact]
+    public void ToggleGroupCollapsed_ExpandsExistingGroupAndSendsRequest()
+    {
+        StaTestRunner.Run(() =>
+        {
+            RecordingGraphRequestCommand command = new();
+            GraphCanvas canvas = CreateArrangedCanvas();
+            canvas.CollapsedGroupIds = ["work"];
+            canvas.GraphRequestCommand = command;
+
+            bool toggled = canvas.ToggleGroupCollapsed("work");
+
+            Assert.True(toggled);
+            Assert.Empty(canvas.CollapsedGroupIds);
+            GraphRequest request = Assert.Single(command.Requests);
+            Assert.Equal(GraphRequestKind.SetGroupCollapsed, request.Kind);
+            Assert.Equal("work", request.GroupId);
+            Assert.False(request.IsGroupCollapsed);
         });
     }
 

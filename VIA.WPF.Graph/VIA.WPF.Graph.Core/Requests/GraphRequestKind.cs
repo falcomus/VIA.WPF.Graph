@@ -13,4 +13,5 @@ public enum GraphRequestKind
     OpenLink = 5,
     OpenGroup = 6,
     ReturnToOverview = 7,
+    SetGroupCollapsed = 8,
 }

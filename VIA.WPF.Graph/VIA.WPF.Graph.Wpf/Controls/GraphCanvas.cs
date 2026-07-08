@@ -101,6 +101,15 @@ public sealed class GraphCanvas : FrameworkElement
             FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
             OnSelectionPropertyChanged));
 
+    public static readonly DependencyProperty CollapsedGroupIdsProperty = DependencyProperty.Register(
+        nameof(CollapsedGroupIds),
+        typeof(IReadOnlyList<string>),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            Array.Empty<string>(),
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnCollapsedGroupIdsChanged));
+
     public static readonly DependencyProperty FocusedNodeIdProperty = DependencyProperty.Register(
         nameof(FocusedNodeId),
         typeof(string),
@@ -151,16 +160,22 @@ public sealed class GraphCanvas : FrameworkElement
     private const double ZoomWheelFactor = 1.1d;
     private const double DefaultFitPadding = 32d;
     private const double EdgeHitTolerance = 6d;
+    private const double CollapseToggleSize = 20d;
     private const double FocusDimOpacity = 0.22d;
 
     private static readonly Brush BackgroundBrush = CreateFrozenBrush(Color.FromRgb(248, 248, 248));
     private static readonly Brush GroupFillBrush = CreateFrozenBrush(Color.FromArgb(20, 96, 125, 139));
     private static readonly Brush SelectedGroupFillBrush = CreateFrozenBrush(Color.FromArgb(32, 30, 115, 190));
+    private static readonly Brush CollapsedGroupFillBrush = CreateFrozenBrush(Color.FromRgb(236, 242, 246));
+    private static readonly Brush CollapsedBadgeFillBrush = CreateFrozenBrush(Color.FromRgb(30, 115, 190));
+    private static readonly Brush CollapsedBadgeTextBrush = CreateFrozenBrush(Color.FromRgb(255, 255, 255));
     private static readonly Brush NodeFillBrush = Brushes.White;
     private static readonly Brush TextBrush = Brushes.Black;
+    private static readonly Brush MutedTextBrush = CreateFrozenBrush(Color.FromRgb(96, 96, 96));
     private static readonly Brush SelectionBrush = CreateFrozenBrush(Color.FromRgb(30, 115, 190));
     private static readonly Pen GroupPen = CreateFrozenPen(Color.FromRgb(96, 125, 139), 1.25d, DashStyles.Dash);
     private static readonly Pen SelectedGroupPen = CreateFrozenPen(Color.FromRgb(30, 115, 190), 2.25d, DashStyles.Dash);
+    private static readonly Pen CollapsedGroupPen = CreateFrozenPen(Color.FromRgb(76, 104, 122), 2d, DashStyles.Solid);
     private static readonly Pen EdgePen = CreateFrozenPen(Color.FromRgb(84, 96, 108), 1.5d, DashStyles.Solid);
     private static readonly Pen SelectedEdgePen = CreateFrozenPen(Color.FromRgb(30, 115, 190), 2.5d, DashStyles.Solid);
     private static readonly Pen FallbackEdgePen = CreateFrozenPen(Color.FromRgb(120, 120, 120), 1.5d, DashStyles.Dash);
@@ -240,6 +255,12 @@ public sealed class GraphCanvas : FrameworkElement
     {
         get => (IReadOnlyList<string>?)GetValue(SelectedGroupIdsProperty) ?? Array.Empty<string>();
         set => SetValue(SelectedGroupIdsProperty, CopySelection(value));
+    }
+
+    public IReadOnlyList<string> CollapsedGroupIds
+    {
+        get => (IReadOnlyList<string>?)GetValue(CollapsedGroupIdsProperty) ?? Array.Empty<string>();
+        set => SetValue(CollapsedGroupIdsProperty, CopySelection(value));
     }
 
     public string? FocusedNodeId
@@ -367,6 +388,33 @@ public sealed class GraphCanvas : FrameworkElement
         return FocusGroup(groupId);
     }
 
+    public bool SetGroupCollapsed(string groupId, bool isCollapsed)
+    {
+        string? normalizedGroupId = NormalizeOptionalText(groupId);
+        if (normalizedGroupId is null || !TryGetGroupBounds(normalizedGroupId, out _))
+        {
+            return false;
+        }
+
+        SetCurrentValue(
+            CollapsedGroupIdsProperty,
+            UpdateCollapsedGroups(CollapsedGroupIds, normalizedGroupId, isCollapsed));
+        ExecuteGraphRequest(GraphRequest.SetGroupCollapsed(normalizedGroupId, isCollapsed));
+        return true;
+    }
+
+    public bool ToggleGroupCollapsed(string groupId)
+    {
+        string? normalizedGroupId = NormalizeOptionalText(groupId);
+        if (normalizedGroupId is null)
+        {
+            return false;
+        }
+
+        bool isCollapsed = CollapsedGroupIds.Contains(normalizedGroupId, StringComparer.Ordinal);
+        return SetGroupCollapsed(normalizedGroupId, !isCollapsed);
+    }
+
     public bool FocusFirstMatch(string searchText)
     {
         string normalizedSearchText = searchText ?? string.Empty;
@@ -470,7 +518,16 @@ public sealed class GraphCanvas : FrameworkElement
         }
 
         Focus();
-        GraphCanvasHit? hit = HitTestGraph(e.GetPosition(this));
+        Point mousePosition = e.GetPosition(this);
+        GraphCanvasHit? collapseToggleHit = e.ClickCount == 1 ? HitTestGroupCollapseToggle(mousePosition) : null;
+        if (collapseToggleHit is not null)
+        {
+            _ = ToggleGroupCollapsed(collapseToggleHit.Id);
+            e.Handled = true;
+            return;
+        }
+
+        GraphCanvasHit? hit = HitTestGraph(mousePosition);
         if (e.ClickCount > 1)
         {
             ApplyHitFocus(hit);
@@ -570,6 +627,13 @@ public sealed class GraphCanvas : FrameworkElement
         canvas.InvalidateVisual();
     }
 
+    private static void OnCollapsedGroupIdsChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
+    {
+        GraphCanvas canvas = (GraphCanvas)dependencyObject;
+        canvas.RenderLayers(canvas.LayoutResult);
+        canvas.InvalidateVisual();
+    }
+
 
     private static void OnFocusPropertyChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
     {
@@ -617,17 +681,19 @@ public sealed class GraphCanvas : FrameworkElement
         HashSet<string> selectedLinkIds = ToSelectionSet(SelectedLinkIds);
         HashSet<string> selectedNodeIds = ToSelectionSet(SelectedNodeIds);
         GraphCanvasFocusContext focusContext = new(FocusedNodeId, FocusedLinkId, FocusedGroupId, SearchText);
+        GraphCanvasCollapseContext collapseContext = GraphCanvasCollapseContext.Create(layoutResult, CollapsedGroupIds);
 
-        groupLayer.Render(drawingContext => DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds, focusContext));
-        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges, selectedLinkIds, focusContext));
-        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes, selectedNodeIds, focusContext));
+        groupLayer.Render(drawingContext => DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds, focusContext, collapseContext));
+        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges, selectedLinkIds, focusContext, collapseContext));
+        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes, selectedNodeIds, focusContext, collapseContext));
     }
 
     private void DrawGroups(
         DrawingContext drawingContext,
         IReadOnlyList<GraphLayoutGroup> groups,
         IReadOnlySet<string> selectedGroupIds,
-        GraphCanvasFocusContext focusContext)
+        GraphCanvasFocusContext focusContext,
+        GraphCanvasCollapseContext collapseContext)
     {
         foreach (GraphLayoutGroup group in groups)
         {
@@ -636,12 +702,20 @@ public sealed class GraphCanvas : FrameworkElement
             bool isSearchMatch = focusContext.MatchesSearch(group.GroupId);
             bool isHighlighted = isSelected || isFocused || isSearchMatch;
             bool isDimmed = focusContext.IsActive && !isHighlighted;
+            bool isCollapsed = collapseContext.IsCollapsed(group.GroupId);
             Rect rect = ToRect(group.Bounds);
 
             DrawWithOptionalOpacity(drawingContext, isDimmed, () =>
             {
+                if (isCollapsed)
+                {
+                    DrawCollapsedGroup(drawingContext, group, rect, isHighlighted, collapseContext.GetBundledTransitionCount(group.GroupId));
+                    return;
+                }
+
                 drawingContext.DrawRectangle(isHighlighted ? SelectedGroupFillBrush : GroupFillBrush, isHighlighted ? SelectedGroupPen : GroupPen, rect);
                 DrawText(drawingContext, group.GroupId, rect, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Left, 8d, 4d);
+                DrawCollapseToggle(drawingContext, group.Bounds, isCollapsed: false);
             });
         }
     }
@@ -650,11 +724,12 @@ public sealed class GraphCanvas : FrameworkElement
         DrawingContext drawingContext,
         IReadOnlyList<GraphLayoutEdge> edges,
         IReadOnlySet<string> selectedLinkIds,
-        GraphCanvasFocusContext focusContext)
+        GraphCanvasFocusContext focusContext,
+        GraphCanvasCollapseContext collapseContext)
     {
         foreach (GraphLayoutEdge edge in edges)
         {
-            if (edge.Points.Count < 2)
+            if (edge.Points.Count < 2 || collapseContext.IsEdgeBundled(edge))
             {
                 continue;
             }
@@ -684,10 +759,16 @@ public sealed class GraphCanvas : FrameworkElement
         DrawingContext drawingContext,
         IReadOnlyList<GraphLayoutNode> nodes,
         IReadOnlySet<string> selectedNodeIds,
-        GraphCanvasFocusContext focusContext)
+        GraphCanvasFocusContext focusContext,
+        GraphCanvasCollapseContext collapseContext)
     {
         foreach (GraphLayoutNode node in nodes)
         {
+            if (collapseContext.IsNodeHidden(node))
+            {
+                continue;
+            }
+
             bool isSelected = selectedNodeIds.Contains(node.NodeId);
             bool isFocused = StringComparer.Ordinal.Equals(focusContext.NodeId, node.NodeId);
             bool isSearchMatch = focusContext.MatchesSearch(node.NodeId);
@@ -701,6 +782,60 @@ public sealed class GraphCanvas : FrameworkElement
                 DrawText(drawingContext, node.NodeId, rect, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Center, 6d, 0d);
             });
         }
+    }
+
+    private void DrawCollapsedGroup(
+        DrawingContext drawingContext,
+        GraphLayoutGroup group,
+        Rect bounds,
+        bool isHighlighted,
+        int bundledTransitionCount)
+    {
+        Pen border = isHighlighted ? SelectedGroupPen : CollapsedGroupPen;
+        drawingContext.DrawRoundedRectangle(CollapsedGroupFillBrush, border, bounds, NodeCornerRadius, NodeCornerRadius);
+        DrawText(drawingContext, group.GroupId, bounds, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Left, 10d, 6d);
+        DrawCollapseToggle(drawingContext, group.Bounds, isCollapsed: true);
+
+        string subtitle = bundledTransitionCount == 1
+            ? "Collapsed · 1 transition"
+            : $"Collapsed · {bundledTransitionCount} transitions";
+        Rect subtitleBounds = new(bounds.X, bounds.Y + 18d, bounds.Width, Math.Max(0d, bounds.Height - 18d));
+        DrawText(drawingContext, subtitle, subtitleBounds, MutedTextBrush, TextAlignment.Left, 10d, 4d);
+
+        if (bundledTransitionCount <= 0)
+        {
+            return;
+        }
+
+        string badgeText = bundledTransitionCount > 99 ? "99+" : bundledTransitionCount.ToString(CultureInfo.InvariantCulture);
+        double badgeWidth = badgeText.Length > 2 ? 32d : 26d;
+        Rect badgeBounds = new(
+            Math.Max(bounds.Left + 8d, bounds.Right - badgeWidth - 10d),
+            bounds.Top + 8d,
+            badgeWidth,
+            18d);
+
+        drawingContext.DrawRoundedRectangle(CollapsedBadgeFillBrush, null, badgeBounds, 9d, 9d);
+        DrawText(drawingContext, badgeText, badgeBounds, CollapsedBadgeTextBrush, TextAlignment.Center, 3d, 0d);
+    }
+
+    private void DrawCollapseToggle(DrawingContext drawingContext, GraphRect groupBounds, bool isCollapsed)
+    {
+        Rect toggleBounds = GetCollapseToggleBounds(groupBounds);
+        drawingContext.DrawRoundedRectangle(BackgroundBrush, CollapsedGroupPen, toggleBounds, 4d, 4d);
+
+        Point left = new(toggleBounds.Left + 5d, toggleBounds.Top + (toggleBounds.Height / 2d));
+        Point right = new(toggleBounds.Right - 5d, toggleBounds.Top + (toggleBounds.Height / 2d));
+        drawingContext.DrawLine(CollapsedGroupPen, left, right);
+
+        if (!isCollapsed)
+        {
+            return;
+        }
+
+        Point top = new(toggleBounds.Left + (toggleBounds.Width / 2d), toggleBounds.Top + 5d);
+        Point bottom = new(toggleBounds.Left + (toggleBounds.Width / 2d), toggleBounds.Bottom - 5d);
+        drawingContext.DrawLine(CollapsedGroupPen, top, bottom);
     }
 
     private void DrawText(
@@ -747,11 +882,21 @@ public sealed class GraphCanvas : FrameworkElement
         }
 
         Point contentPoint = ViewToContent(viewPoint);
+        GraphCanvasCollapseContext collapseContext = GraphCanvasCollapseContext.Create(layoutResult, CollapsedGroupIds);
+
+        for (int index = layoutResult.Groups.Count - 1; index >= 0; index--)
+        {
+            GraphLayoutGroup group = layoutResult.Groups[index];
+            if (collapseContext.IsCollapsed(group.GroupId) && ToRect(group.Bounds).Contains(contentPoint))
+            {
+                return new GraphCanvasHit(GraphCanvasHitKind.Group, group.GroupId);
+            }
+        }
 
         for (int index = layoutResult.Nodes.Count - 1; index >= 0; index--)
         {
             GraphLayoutNode node = layoutResult.Nodes[index];
-            if (ToRect(node.Bounds).Contains(contentPoint))
+            if (!collapseContext.IsNodeHidden(node) && ToRect(node.Bounds).Contains(contentPoint))
             {
                 return new GraphCanvasHit(GraphCanvasHitKind.Node, node.NodeId);
             }
@@ -760,7 +905,7 @@ public sealed class GraphCanvas : FrameworkElement
         double edgeTolerance = EdgeHitTolerance / Math.Max(Zoom, 0.000001d);
         foreach (GraphLayoutEdge edge in layoutResult.Edges)
         {
-            if (edge.Points.Count < 2)
+            if (edge.Points.Count < 2 || collapseContext.IsEdgeBundled(edge))
             {
                 continue;
             }
@@ -775,6 +920,27 @@ public sealed class GraphCanvas : FrameworkElement
         {
             GraphLayoutGroup group = layoutResult.Groups[index];
             if (ToRect(group.Bounds).Contains(contentPoint))
+            {
+                return new GraphCanvasHit(GraphCanvasHitKind.Group, group.GroupId);
+            }
+        }
+
+        return null;
+    }
+
+    private GraphCanvasHit? HitTestGroupCollapseToggle(Point viewPoint)
+    {
+        GraphLayoutResult? layoutResult = LayoutResult;
+        if (layoutResult is null || !layoutResult.Succeeded)
+        {
+            return null;
+        }
+
+        Point contentPoint = ViewToContent(viewPoint);
+        for (int index = layoutResult.Groups.Count - 1; index >= 0; index--)
+        {
+            GraphLayoutGroup group = layoutResult.Groups[index];
+            if (GetCollapseToggleBounds(group.Bounds).Contains(contentPoint))
             {
                 return new GraphCanvasHit(GraphCanvasHitKind.Group, group.GroupId);
             }
@@ -1027,6 +1193,32 @@ public sealed class GraphCanvas : FrameworkElement
         return values.Count == 0 ? Array.Empty<string>() : values.ToArray();
     }
 
+    private static IReadOnlyList<string> UpdateCollapsedGroups(
+        IReadOnlyList<string> currentCollapsedGroupIds,
+        string groupId,
+        bool isCollapsed)
+    {
+        List<string> values = currentCollapsedGroupIds
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        int existingIndex = values.FindIndex(value => StringComparer.Ordinal.Equals(value, groupId));
+        if (isCollapsed)
+        {
+            if (existingIndex < 0)
+            {
+                values.Add(groupId);
+            }
+        }
+        else if (existingIndex >= 0)
+        {
+            values.RemoveAt(existingIndex);
+        }
+
+        return values.Count == 0 ? Array.Empty<string>() : values.ToArray();
+    }
+
     private static string? NormalizeOptionalText(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value;
@@ -1159,9 +1351,47 @@ public sealed class GraphCanvas : FrameworkElement
         return new GraphRect(0d, 0d, 0d, 0d);
     }
 
+    private static Rect GetCollapseToggleBounds(GraphRect groupBounds)
+    {
+        double x = groupBounds.X + Math.Max(4d, groupBounds.Width - CollapseToggleSize - 6d);
+        double y = groupBounds.Y + 6d;
+        return new Rect(x, y, CollapseToggleSize, CollapseToggleSize);
+    }
+
     private static Rect ToRect(GraphRect rect)
     {
         return new Rect(rect.X, rect.Y, rect.Width, rect.Height);
+    }
+
+    private static Point GetCenter(GraphRect rect)
+    {
+        return new Point(rect.X + (rect.Width / 2d), rect.Y + (rect.Height / 2d));
+    }
+
+    private static bool ContainsPoint(GraphRect rect, GraphPoint point)
+    {
+        return ToRect(rect).Contains(ToPoint(point));
+    }
+
+    private static bool ContainsPoint(GraphRect rect, Point point)
+    {
+        return ToRect(rect).Contains(point);
+    }
+
+    private static bool IntersectsSegment(GraphRect rect, GraphPoint start, GraphPoint end)
+    {
+        Rect bounds = ToRect(rect);
+        Point startPoint = ToPoint(start);
+        Point endPoint = ToPoint(end);
+        if (bounds.Contains(startPoint) || bounds.Contains(endPoint))
+        {
+            return true;
+        }
+
+        Rect segmentBounds = new(
+            new Point(Math.Min(startPoint.X, endPoint.X), Math.Min(startPoint.Y, endPoint.Y)),
+            new Point(Math.Max(startPoint.X, endPoint.X), Math.Max(startPoint.Y, endPoint.Y)));
+        return bounds.IntersectsWith(segmentBounds);
     }
 
     private static Point ToPoint(GraphPoint point)
@@ -1224,6 +1454,86 @@ public sealed class GraphCanvas : FrameworkElement
 
         Cursor = previousCursor;
         previousCursor = null;
+    }
+
+    private sealed class GraphCanvasCollapseContext
+    {
+        private readonly IReadOnlyList<GraphLayoutGroup> collapsedGroups;
+        private readonly IReadOnlyDictionary<string, int> bundledTransitionCountByGroupId;
+
+        private GraphCanvasCollapseContext(
+            IReadOnlyList<GraphLayoutGroup> collapsedGroups,
+            IReadOnlyDictionary<string, int> bundledTransitionCountByGroupId)
+        {
+            this.collapsedGroups = collapsedGroups;
+            this.bundledTransitionCountByGroupId = bundledTransitionCountByGroupId;
+        }
+
+        public static GraphCanvasCollapseContext Create(
+            GraphLayoutResult layoutResult,
+            IReadOnlyList<string> collapsedGroupIds)
+        {
+            HashSet<string> collapsedGroupIdSet = new(collapsedGroupIds, StringComparer.Ordinal);
+            GraphLayoutGroup[] groups = layoutResult.Groups
+                .Where(group => collapsedGroupIdSet.Contains(group.GroupId))
+                .ToArray();
+
+            Dictionary<string, int> bundledCounts = groups.ToDictionary(
+                group => group.GroupId,
+                group => layoutResult.Edges.Count(edge => IsBundledTransitionForGroup(edge, group.Bounds)),
+                StringComparer.Ordinal);
+
+            return new GraphCanvasCollapseContext(groups, bundledCounts);
+        }
+
+        public bool IsCollapsed(string groupId)
+        {
+            return collapsedGroups.Any(group => StringComparer.Ordinal.Equals(group.GroupId, groupId));
+        }
+
+        public int GetBundledTransitionCount(string groupId)
+        {
+            return bundledTransitionCountByGroupId.TryGetValue(groupId, out int count) ? count : 0;
+        }
+
+        public bool IsNodeHidden(GraphLayoutNode node)
+        {
+            Point center = GetCenter(node.Bounds);
+            return collapsedGroups.Any(group => ContainsPoint(group.Bounds, center));
+        }
+
+        public bool IsEdgeBundled(GraphLayoutEdge edge)
+        {
+            return edge.Points.Count >= 2 && collapsedGroups.Any(group => EdgeTouchesGroup(edge, group.Bounds));
+        }
+
+        private static bool IsBundledTransitionForGroup(GraphLayoutEdge edge, GraphRect groupBounds)
+        {
+            if (edge.Points.Count < 2 || !EdgeTouchesGroup(edge, groupBounds))
+            {
+                return false;
+            }
+
+            return edge.Points.Any(point => !ContainsPoint(groupBounds, point));
+        }
+
+        private static bool EdgeTouchesGroup(GraphLayoutEdge edge, GraphRect groupBounds)
+        {
+            if (edge.Points.Any(point => ContainsPoint(groupBounds, point)))
+            {
+                return true;
+            }
+
+            for (int index = 0; index < edge.Points.Count - 1; index++)
+            {
+                if (IntersectsSegment(groupBounds, edge.Points[index], edge.Points[index + 1]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     private sealed record GraphCanvasFocusContext(string? NodeId, string? LinkId, string? GroupId, string SearchText)
