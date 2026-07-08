@@ -129,6 +129,26 @@ public sealed class GraphCanvas : FrameworkElement
             FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
             OnMarkerGroupFilterChanged));
 
+    public static readonly DependencyProperty ActiveViewModeProperty = DependencyProperty.Register(
+        nameof(ActiveViewMode),
+        typeof(GraphViewMode),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            GraphViewMode.Overview,
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnVisualModePropertyChanged));
+
+    public static readonly DependencyProperty VisualDensityProperty = DependencyProperty.Register(
+        nameof(VisualDensity),
+        typeof(double),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            1d,
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnVisualModePropertyChanged,
+            CoerceVisualDensity),
+        IsFinitePositiveDouble);
+
     public static readonly DependencyProperty FocusedNodeIdProperty = DependencyProperty.Register(
         nameof(FocusedNodeId),
         typeof(string),
@@ -181,6 +201,10 @@ public sealed class GraphCanvas : FrameworkElement
     private const double EdgeHitTolerance = 6d;
     private const double CollapseToggleSize = 20d;
     private const double FocusDimOpacity = 0.22d;
+    private const double MinVisualDensity = 0.55d;
+    private const double MaxVisualDensity = 1.35d;
+    private const double LowDensityLabelZoomThreshold = 0.72d;
+    private const double AreaOverviewBadgeHeight = 18d;
 
     private static readonly Brush BackgroundBrush = CreateFrozenBrush(Color.FromRgb(248, 248, 248));
     private static readonly Brush GroupFillBrush = CreateFrozenBrush(Color.FromArgb(20, 96, 125, 139));
@@ -189,6 +213,8 @@ public sealed class GraphCanvas : FrameworkElement
     private static readonly Brush CollapsedGroupFillBrush = CreateFrozenBrush(Color.FromRgb(236, 242, 246));
     private static readonly Brush CollapsedBadgeFillBrush = CreateFrozenBrush(Color.FromRgb(30, 115, 190));
     private static readonly Brush CollapsedBadgeTextBrush = CreateFrozenBrush(Color.FromRgb(255, 255, 255));
+    private static readonly Brush AreaOverviewBundleFillBrush = CreateFrozenBrush(Color.FromRgb(76, 104, 122));
+    private static readonly Brush AreaOverviewBundleTextBrush = CreateFrozenBrush(Color.FromRgb(255, 255, 255));
     private static readonly Brush NodeFillBrush = Brushes.White;
     private static readonly Brush TextBrush = Brushes.Black;
     private static readonly Brush MutedTextBrush = CreateFrozenBrush(Color.FromRgb(96, 96, 96));
@@ -197,6 +223,8 @@ public sealed class GraphCanvas : FrameworkElement
     private static readonly Pen SelectedGroupPen = CreateFrozenPen(Color.FromRgb(30, 115, 190), 2.25d, DashStyles.Dash);
     private static readonly Pen MarkerGroupPen = CreateFrozenPen(Color.FromRgb(255, 152, 0), 2d, DashStyles.Dash);
     private static readonly Pen CollapsedGroupPen = CreateFrozenPen(Color.FromRgb(76, 104, 122), 2d, DashStyles.Solid);
+    private static readonly Pen AreaOverviewGroupPen = CreateFrozenPen(Color.FromRgb(55, 82, 100), 2d, DashStyles.Solid);
+    private static readonly Pen AreaOverviewEdgePen = CreateFrozenPen(Color.FromRgb(76, 104, 122), 2d, DashStyles.Solid);
     private static readonly Pen EdgePen = CreateFrozenPen(Color.FromRgb(84, 96, 108), 1.5d, DashStyles.Solid);
     private static readonly Pen SelectedEdgePen = CreateFrozenPen(Color.FromRgb(30, 115, 190), 2.5d, DashStyles.Solid);
     private static readonly Pen FallbackEdgePen = CreateFrozenPen(Color.FromRgb(120, 120, 120), 1.5d, DashStyles.Dash);
@@ -296,6 +324,25 @@ public sealed class GraphCanvas : FrameworkElement
         set => SetValue(IsMarkerGroupFilterEnabledProperty, value);
     }
 
+    public GraphViewMode ActiveViewMode
+    {
+        get => (GraphViewMode)GetValue(ActiveViewModeProperty);
+        set => SetValue(ActiveViewModeProperty, value);
+    }
+
+    public double VisualDensity
+    {
+        get => (double)GetValue(VisualDensityProperty);
+        set => SetValue(VisualDensityProperty, value);
+    }
+
+    public bool IsAreaOverviewActive => IsAreaOverviewMode(ActiveViewMode);
+
+    public bool IsFocusModeActive => ActiveViewMode == GraphViewMode.Focus
+        || FocusedNodeId is not null
+        || FocusedLinkId is not null
+        || FocusedGroupId is not null;
+
     public string? FocusedNodeId
     {
         get => (string?)GetValue(FocusedNodeIdProperty);
@@ -379,6 +426,7 @@ public sealed class GraphCanvas : FrameworkElement
             return false;
         }
 
+        SetCurrentValue(ActiveViewModeProperty, GraphViewMode.Focus);
         SetCurrentValue(FocusedNodeIdProperty, normalizedNodeId);
         SetCurrentValue(FocusedLinkIdProperty, null);
         SetCurrentValue(FocusedGroupIdProperty, null);
@@ -394,6 +442,7 @@ public sealed class GraphCanvas : FrameworkElement
             return false;
         }
 
+        SetCurrentValue(ActiveViewModeProperty, GraphViewMode.Focus);
         SetCurrentValue(FocusedNodeIdProperty, null);
         SetCurrentValue(FocusedLinkIdProperty, normalizedLinkId);
         SetCurrentValue(FocusedGroupIdProperty, null);
@@ -409,6 +458,7 @@ public sealed class GraphCanvas : FrameworkElement
             return false;
         }
 
+        SetCurrentValue(ActiveViewModeProperty, GraphViewMode.Focus);
         SetCurrentValue(FocusedNodeIdProperty, null);
         SetCurrentValue(FocusedLinkIdProperty, null);
         SetCurrentValue(FocusedGroupIdProperty, normalizedGroupId);
@@ -419,6 +469,20 @@ public sealed class GraphCanvas : FrameworkElement
     public bool DrillDownToGroup(string groupId)
     {
         return FocusGroup(groupId);
+    }
+
+    public void ShowAreaOverview()
+    {
+        SetCurrentValue(ActiveViewModeProperty, GraphViewMode.GroupOverview);
+        SetCurrentValue(FocusedNodeIdProperty, null);
+        SetCurrentValue(FocusedLinkIdProperty, null);
+        SetCurrentValue(FocusedGroupIdProperty, null);
+        SetCurrentValue(SearchTextProperty, string.Empty);
+
+        if (RenderSize.Width > 0d && RenderSize.Height > 0d)
+        {
+            FitToGraph();
+        }
     }
 
     public bool SetGroupCollapsed(string groupId, bool isCollapsed)
@@ -516,6 +580,7 @@ public sealed class GraphCanvas : FrameworkElement
 
     public void ReturnToOverview()
     {
+        SetCurrentValue(ActiveViewModeProperty, GraphViewMode.Overview);
         SetCurrentValue(FocusedNodeIdProperty, null);
         SetCurrentValue(FocusedLinkIdProperty, null);
         SetCurrentValue(FocusedGroupIdProperty, null);
@@ -723,6 +788,14 @@ public sealed class GraphCanvas : FrameworkElement
     }
 
 
+    private static void OnVisualModePropertyChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
+    {
+        GraphCanvas canvas = (GraphCanvas)dependencyObject;
+        canvas.RenderLayers(canvas.LayoutResult);
+        canvas.InvalidateMeasure();
+        canvas.InvalidateVisual();
+    }
+
     private static void OnFocusPropertyChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
     {
         GraphCanvas canvas = (GraphCanvas)dependencyObject;
@@ -738,6 +811,12 @@ public sealed class GraphCanvas : FrameworkElement
         double min = Math.Min(canvas.MinZoom, canvas.MaxZoom);
         double max = Math.Max(canvas.MinZoom, canvas.MaxZoom);
         return Math.Clamp(value, min, max);
+    }
+
+    private static object CoerceVisualDensity(DependencyObject dependencyObject, object baseValue)
+    {
+        double value = (double)baseValue;
+        return Math.Clamp(value, MinVisualDensity, MaxVisualDensity);
     }
 
     private static bool IsFinitePositiveDouble(object value)
@@ -768,7 +847,8 @@ public sealed class GraphCanvas : FrameworkElement
         HashSet<string> selectedGroupIds = ToSelectionSet(SelectedGroupIds);
         HashSet<string> selectedLinkIds = ToSelectionSet(SelectedLinkIds);
         HashSet<string> selectedNodeIds = ToSelectionSet(SelectedNodeIds);
-        GraphCanvasFocusContext focusContext = new(FocusedNodeId, FocusedLinkId, FocusedGroupId, SearchText);
+        GraphCanvasVisualContext visualContext = new(ActiveViewMode, VisualDensity, Zoom);
+        GraphCanvasFocusContext focusContext = new(FocusedNodeId, FocusedLinkId, FocusedGroupId, SearchText, visualContext.IsFocusMode);
         GraphCanvasCollapseContext collapseContext = GraphCanvasCollapseContext.Create(layoutResult, CollapsedGroupIds);
         GraphCanvasMarkerGroupContext markerGroupContext = GraphCanvasMarkerGroupContext.Create(
             Document,
@@ -778,22 +858,34 @@ public sealed class GraphCanvas : FrameworkElement
             SearchText,
             IsMarkerGroupFilterEnabled);
 
+        if (visualContext.IsAreaOverview)
+        {
+            IReadOnlyList<GraphCanvasAreaTransition> areaTransitions = CreateAreaOverviewTransitions(layoutResult);
+            groupLayer.Render(drawingContext => DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds, focusContext, collapseContext, visualContext));
+            edgeLayer.Render(drawingContext => DrawAreaOverviewTransitions(drawingContext, areaTransitions, focusContext, visualContext));
+            nodeLayer.Clear();
+            return;
+        }
+
         groupLayer.Render(drawingContext =>
         {
-            DrawMarkerGroupHighlights(drawingContext, markerGroupContext);
-            DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds, focusContext, collapseContext);
+            DrawMarkerGroupHighlights(drawingContext, markerGroupContext, visualContext);
+            DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds, focusContext, collapseContext, visualContext);
         });
-        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges, selectedLinkIds, focusContext, collapseContext, markerGroupContext));
-        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes, selectedNodeIds, focusContext, collapseContext, markerGroupContext));
+        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges, selectedLinkIds, focusContext, collapseContext, markerGroupContext, visualContext));
+        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes, selectedNodeIds, focusContext, collapseContext, markerGroupContext, visualContext));
     }
 
-    private void DrawMarkerGroupHighlights(DrawingContext drawingContext, GraphCanvasMarkerGroupContext markerGroupContext)
+    private void DrawMarkerGroupHighlights(
+        DrawingContext drawingContext,
+        GraphCanvasMarkerGroupContext markerGroupContext,
+        GraphCanvasVisualContext visualContext)
     {
         foreach (GraphCanvasMarkerGroupHighlight highlight in markerGroupContext.Highlights)
         {
             Rect bounds = ToRect(Expand(highlight.Bounds, 10d));
             drawingContext.DrawRoundedRectangle(MarkerGroupFillBrush, MarkerGroupPen, bounds, NodeCornerRadius, NodeCornerRadius);
-            DrawText(drawingContext, highlight.Title, bounds, SelectionBrush, TextAlignment.Left, 8d, 2d);
+            DrawTextIfVisible(drawingContext, highlight.Title, bounds, SelectionBrush, TextAlignment.Left, 8d, 2d, visualContext);
         }
     }
 
@@ -802,7 +894,8 @@ public sealed class GraphCanvas : FrameworkElement
         IReadOnlyList<GraphLayoutGroup> groups,
         IReadOnlySet<string> selectedGroupIds,
         GraphCanvasFocusContext focusContext,
-        GraphCanvasCollapseContext collapseContext)
+        GraphCanvasCollapseContext collapseContext,
+        GraphCanvasVisualContext visualContext)
     {
         foreach (GraphLayoutGroup group in groups)
         {
@@ -811,20 +904,26 @@ public sealed class GraphCanvas : FrameworkElement
             bool isSearchMatch = focusContext.MatchesSearch(group.GroupId);
             bool isHighlighted = isSelected || isFocused || isSearchMatch;
             bool isDimmed = focusContext.IsActive && !isHighlighted;
-            bool isCollapsed = collapseContext.IsCollapsed(group.GroupId);
+            bool isCollapsed = !visualContext.IsAreaOverview && collapseContext.IsCollapsed(group.GroupId);
             Rect rect = ToRect(group.Bounds);
 
             DrawWithOptionalOpacity(drawingContext, isDimmed, () =>
             {
                 if (isCollapsed)
                 {
-                    DrawCollapsedGroup(drawingContext, group, rect, isHighlighted, collapseContext.GetBundledTransitionCount(group.GroupId));
+                    DrawCollapsedGroup(drawingContext, group, rect, isHighlighted, collapseContext.GetBundledTransitionCount(group.GroupId), visualContext);
                     return;
                 }
 
-                drawingContext.DrawRectangle(isHighlighted ? SelectedGroupFillBrush : GroupFillBrush, isHighlighted ? SelectedGroupPen : GroupPen, rect);
-                DrawText(drawingContext, group.GroupId, rect, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Left, 8d, 4d);
-                DrawCollapseToggle(drawingContext, group.Bounds, isCollapsed: false);
+                Brush fill = visualContext.IsAreaOverview ? CollapsedGroupFillBrush : isHighlighted ? SelectedGroupFillBrush : GroupFillBrush;
+                Pen pen = visualContext.IsAreaOverview ? AreaOverviewGroupPen : isHighlighted ? SelectedGroupPen : GroupPen;
+                drawingContext.DrawRectangle(fill, pen, rect);
+                DrawTextIfVisible(drawingContext, group.GroupId, rect, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Left, 8d, 4d, visualContext);
+
+                if (!visualContext.IsAreaOverview)
+                {
+                    DrawCollapseToggle(drawingContext, group.Bounds, isCollapsed: false);
+                }
             });
         }
     }
@@ -835,7 +934,8 @@ public sealed class GraphCanvas : FrameworkElement
         IReadOnlySet<string> selectedLinkIds,
         GraphCanvasFocusContext focusContext,
         GraphCanvasCollapseContext collapseContext,
-        GraphCanvasMarkerGroupContext markerGroupContext)
+        GraphCanvasMarkerGroupContext markerGroupContext,
+        GraphCanvasVisualContext visualContext)
     {
         foreach (GraphLayoutEdge edge in edges)
         {
@@ -872,7 +972,8 @@ public sealed class GraphCanvas : FrameworkElement
         IReadOnlySet<string> selectedNodeIds,
         GraphCanvasFocusContext focusContext,
         GraphCanvasCollapseContext collapseContext,
-        GraphCanvasMarkerGroupContext markerGroupContext)
+        GraphCanvasMarkerGroupContext markerGroupContext,
+        GraphCanvasVisualContext visualContext)
     {
         foreach (GraphLayoutNode node in nodes)
         {
@@ -892,7 +993,7 @@ public sealed class GraphCanvas : FrameworkElement
             DrawWithOptionalOpacity(drawingContext, isDimmed, () =>
             {
                 drawingContext.DrawRoundedRectangle(NodeFillBrush, isHighlighted ? SelectedNodePen : NodePen, rect, NodeCornerRadius, NodeCornerRadius);
-                DrawText(drawingContext, node.NodeId, rect, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Center, 6d, 0d);
+                DrawTextIfVisible(drawingContext, node.NodeId, rect, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Center, 6d, 0d, visualContext);
             });
         }
     }
@@ -902,18 +1003,19 @@ public sealed class GraphCanvas : FrameworkElement
         GraphLayoutGroup group,
         Rect bounds,
         bool isHighlighted,
-        int bundledTransitionCount)
+        int bundledTransitionCount,
+        GraphCanvasVisualContext visualContext)
     {
         Pen border = isHighlighted ? SelectedGroupPen : CollapsedGroupPen;
         drawingContext.DrawRoundedRectangle(CollapsedGroupFillBrush, border, bounds, NodeCornerRadius, NodeCornerRadius);
-        DrawText(drawingContext, group.GroupId, bounds, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Left, 10d, 6d);
+        DrawTextIfVisible(drawingContext, group.GroupId, bounds, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Left, 10d, 6d, visualContext);
         DrawCollapseToggle(drawingContext, group.Bounds, isCollapsed: true);
 
         string subtitle = bundledTransitionCount == 1
             ? "Collapsed · 1 transition"
             : $"Collapsed · {bundledTransitionCount} transitions";
         Rect subtitleBounds = new(bounds.X, bounds.Y + 18d, bounds.Width, Math.Max(0d, bounds.Height - 18d));
-        DrawText(drawingContext, subtitle, subtitleBounds, MutedTextBrush, TextAlignment.Left, 10d, 4d);
+        DrawTextIfVisible(drawingContext, subtitle, subtitleBounds, MutedTextBrush, TextAlignment.Left, 10d, 4d, visualContext);
 
         if (bundledTransitionCount <= 0)
         {
@@ -929,7 +1031,7 @@ public sealed class GraphCanvas : FrameworkElement
             18d);
 
         drawingContext.DrawRoundedRectangle(CollapsedBadgeFillBrush, null, badgeBounds, 9d, 9d);
-        DrawText(drawingContext, badgeText, badgeBounds, CollapsedBadgeTextBrush, TextAlignment.Center, 3d, 0d);
+        DrawText(drawingContext, badgeText, badgeBounds, CollapsedBadgeTextBrush, TextAlignment.Center, 3d, 0d, textScale: 1d);
     }
 
     private void DrawCollapseToggle(DrawingContext drawingContext, GraphRect groupBounds, bool isCollapsed)
@@ -951,6 +1053,67 @@ public sealed class GraphCanvas : FrameworkElement
         drawingContext.DrawLine(CollapsedGroupPen, top, bottom);
     }
 
+    private void DrawTextIfVisible(
+        DrawingContext drawingContext,
+        string text,
+        Rect bounds,
+        Brush brush,
+        TextAlignment textAlignment,
+        double horizontalPadding,
+        double verticalPadding,
+        GraphCanvasVisualContext visualContext)
+    {
+        if (!visualContext.ShouldShowLabels)
+        {
+            return;
+        }
+
+        DrawText(
+            drawingContext,
+            text,
+            bounds,
+            brush,
+            textAlignment,
+            horizontalPadding,
+            verticalPadding,
+            visualContext.EffectiveDensity);
+    }
+
+    private void DrawAreaOverviewTransitions(
+        DrawingContext drawingContext,
+        IReadOnlyList<GraphCanvasAreaTransition> transitions,
+        GraphCanvasFocusContext focusContext,
+        GraphCanvasVisualContext visualContext)
+    {
+        foreach (GraphCanvasAreaTransition transition in transitions)
+        {
+            bool isHighlighted = StringComparer.Ordinal.Equals(focusContext.GroupId, transition.SourceGroupId)
+                || StringComparer.Ordinal.Equals(focusContext.GroupId, transition.TargetGroupId);
+            DrawWithOptionalOpacity(drawingContext, focusContext.IsActive && !isHighlighted, () =>
+            {
+                GraphPoint start = new(transition.Start.X, transition.Start.Y);
+                GraphPoint end = new(transition.End.X, transition.End.Y);
+                StreamGeometry geometry = CreatePolylineGeometry([start, end]);
+                drawingContext.DrawGeometry(null, isHighlighted ? SelectedEdgePen : AreaOverviewEdgePen, geometry);
+
+                StreamGeometry? arrowGeometry = CreateArrowHeadGeometry([start, end]);
+                if (arrowGeometry is not null)
+                {
+                    drawingContext.DrawGeometry((isHighlighted ? SelectedEdgePen : AreaOverviewEdgePen).Brush, null, arrowGeometry);
+                }
+
+                string countText = transition.LinkCount > 99 ? "99+" : transition.LinkCount.ToString(CultureInfo.InvariantCulture);
+                Rect badgeBounds = new(
+                    transition.MidPoint.X - 13d,
+                    transition.MidPoint.Y - (AreaOverviewBadgeHeight / 2d),
+                    26d,
+                    AreaOverviewBadgeHeight);
+                drawingContext.DrawRoundedRectangle(AreaOverviewBundleFillBrush, null, badgeBounds, 9d, 9d);
+                DrawText(drawingContext, countText, badgeBounds, AreaOverviewBundleTextBrush, TextAlignment.Center, 3d, 0d, textScale: Math.Max(visualContext.EffectiveDensity, 0.9d));
+            });
+        }
+    }
+
     private void DrawText(
         DrawingContext drawingContext,
         string text,
@@ -958,7 +1121,8 @@ public sealed class GraphCanvas : FrameworkElement
         Brush brush,
         TextAlignment textAlignment,
         double horizontalPadding,
-        double verticalPadding)
+        double verticalPadding,
+        double textScale = 1d)
     {
         double availableWidth = Math.Max(0d, bounds.Width - (horizontalPadding * 2d));
         double availableHeight = Math.Max(0d, bounds.Height - (verticalPadding * 2d));
@@ -972,7 +1136,7 @@ public sealed class GraphCanvas : FrameworkElement
             CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
             TextTypeface,
-            DefaultTextSize,
+            DefaultTextSize * Math.Clamp(textScale, MinVisualDensity, MaxVisualDensity),
             brush,
             VisualTreeHelper.GetDpi(this).PixelsPerDip)
         {
@@ -995,6 +1159,7 @@ public sealed class GraphCanvas : FrameworkElement
         }
 
         Point contentPoint = ViewToContent(viewPoint);
+        GraphCanvasVisualContext visualContext = new(ActiveViewMode, VisualDensity, Zoom);
         GraphCanvasCollapseContext collapseContext = GraphCanvasCollapseContext.Create(layoutResult, CollapsedGroupIds);
         GraphCanvasMarkerGroupContext markerGroupContext = GraphCanvasMarkerGroupContext.Create(
             Document,
@@ -1013,26 +1178,29 @@ public sealed class GraphCanvas : FrameworkElement
             }
         }
 
-        for (int index = layoutResult.Nodes.Count - 1; index >= 0; index--)
+        if (!visualContext.IsAreaOverview)
         {
-            GraphLayoutNode node = layoutResult.Nodes[index];
-            if (!collapseContext.IsNodeHidden(node) && markerGroupContext.IsNodeVisible(node) && ToRect(node.Bounds).Contains(contentPoint))
+            for (int index = layoutResult.Nodes.Count - 1; index >= 0; index--)
             {
-                return new GraphCanvasHit(GraphCanvasHitKind.Node, node.NodeId);
-            }
-        }
-
-        double edgeTolerance = EdgeHitTolerance / Math.Max(Zoom, 0.000001d);
-        foreach (GraphLayoutEdge edge in layoutResult.Edges)
-        {
-            if (edge.Points.Count < 2 || collapseContext.IsEdgeBundled(edge) || !markerGroupContext.IsEdgeVisible(edge))
-            {
-                continue;
+                GraphLayoutNode node = layoutResult.Nodes[index];
+                if (!collapseContext.IsNodeHidden(node) && markerGroupContext.IsNodeVisible(node) && ToRect(node.Bounds).Contains(contentPoint))
+                {
+                    return new GraphCanvasHit(GraphCanvasHitKind.Node, node.NodeId);
+                }
             }
 
-            if (IsPointNearPolyline(contentPoint, edge.Points, edgeTolerance))
+            double edgeTolerance = EdgeHitTolerance / Math.Max(Zoom, 0.000001d);
+            foreach (GraphLayoutEdge edge in layoutResult.Edges)
             {
-                return new GraphCanvasHit(GraphCanvasHitKind.Link, edge.LinkId);
+                if (edge.Points.Count < 2 || collapseContext.IsEdgeBundled(edge) || !markerGroupContext.IsEdgeVisible(edge))
+                {
+                    continue;
+                }
+
+                if (IsPointNearPolyline(contentPoint, edge.Points, edgeTolerance))
+                {
+                    return new GraphCanvasHit(GraphCanvasHitKind.Link, edge.LinkId);
+                }
             }
         }
 
@@ -1051,7 +1219,7 @@ public sealed class GraphCanvas : FrameworkElement
     private GraphCanvasHit? HitTestGroupCollapseToggle(Point viewPoint)
     {
         GraphLayoutResult? layoutResult = LayoutResult;
-        if (layoutResult is null || !layoutResult.Succeeded)
+        if (IsAreaOverviewActive || layoutResult is null || !layoutResult.Succeeded)
         {
             return null;
         }
@@ -1220,6 +1388,66 @@ public sealed class GraphCanvas : FrameworkElement
             (viewPoint.Y - PanY) / Zoom);
     }
 
+
+    private IReadOnlyList<GraphCanvasAreaTransition> CreateAreaOverviewTransitions(GraphLayoutResult layoutResult)
+    {
+        GraphDocument? document = Document;
+        if (document is null || layoutResult.Groups.Count == 0 || document.Links.Count == 0)
+        {
+            return Array.Empty<GraphCanvasAreaTransition>();
+        }
+
+        Dictionary<string, GraphLayoutGroup> groupById = layoutResult.Groups.ToDictionary(group => group.GroupId, StringComparer.Ordinal);
+        HashSet<string> containerGroupIds = document.Groups
+            .Where(group => group.Kind == GraphGroupKind.Container && groupById.ContainsKey(group.Id))
+            .Select(group => group.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        if (containerGroupIds.Count == 0)
+        {
+            return Array.Empty<GraphCanvasAreaTransition>();
+        }
+
+        Dictionary<string, string> groupIdByNodeId = document.Nodes
+            .Select(node => new
+            {
+                node.Id,
+                GroupId = node.GroupMemberships.FirstOrDefault(containerGroupIds.Contains)
+            })
+            .Where(item => item.GroupId is not null)
+            .ToDictionary(item => item.Id, item => item.GroupId!, StringComparer.Ordinal);
+
+        Dictionary<(string SourceGroupId, string TargetGroupId), int> transitionCounts = [];
+        foreach (GraphLink link in document.Links)
+        {
+            if (!groupIdByNodeId.TryGetValue(link.SourceNodeId, out string? sourceGroupId)
+                || !groupIdByNodeId.TryGetValue(link.TargetNodeId, out string? targetGroupId)
+                || StringComparer.Ordinal.Equals(sourceGroupId, targetGroupId))
+            {
+                continue;
+            }
+
+            (string SourceGroupId, string TargetGroupId) key = (sourceGroupId, targetGroupId);
+            transitionCounts[key] = transitionCounts.TryGetValue(key, out int count) ? count + 1 : 1;
+        }
+
+        return transitionCounts
+            .Select(pair =>
+            {
+                GraphLayoutGroup source = groupById[pair.Key.SourceGroupId];
+                GraphLayoutGroup target = groupById[pair.Key.TargetGroupId];
+                Point start = GetCenter(source.Bounds);
+                Point end = GetCenter(target.Bounds);
+                Point midPoint = new((start.X + end.X) / 2d, (start.Y + end.Y) / 2d);
+                return new GraphCanvasAreaTransition(
+                    pair.Key.SourceGroupId,
+                    pair.Key.TargetGroupId,
+                    pair.Value,
+                    start,
+                    end,
+                    midPoint);
+            })
+            .ToArray();
+    }
 
     private bool TryGetNodeBounds(string nodeId, out GraphRect bounds)
     {
@@ -1474,6 +1702,11 @@ public sealed class GraphCanvas : FrameworkElement
         drawingContext.Pop();
     }
 
+    private static bool IsAreaOverviewMode(GraphViewMode activeViewMode)
+    {
+        return activeViewMode == GraphViewMode.GroupOverview;
+    }
+
     private static bool ContainsText(string id, string searchText)
     {
         return !string.IsNullOrWhiteSpace(searchText)
@@ -1661,6 +1894,26 @@ public sealed class GraphCanvas : FrameworkElement
 
         Cursor = previousCursor;
         previousCursor = null;
+    }
+
+    private sealed record GraphCanvasAreaTransition(
+        string SourceGroupId,
+        string TargetGroupId,
+        int LinkCount,
+        Point Start,
+        Point End,
+        Point MidPoint);
+
+    private sealed record GraphCanvasVisualContext(GraphViewMode ActiveViewMode, double VisualDensity, double Zoom)
+    {
+        public double EffectiveDensity => Math.Clamp(VisualDensity, MinVisualDensity, MaxVisualDensity);
+
+        public bool IsAreaOverview => IsAreaOverviewMode(ActiveViewMode);
+
+        public bool IsFocusMode => ActiveViewMode == GraphViewMode.Focus;
+
+        public bool ShouldShowLabels => EffectiveDensity > MinVisualDensity
+            && ((Zoom * EffectiveDensity) >= LowDensityLabelZoomThreshold || IsAreaOverview);
     }
 
     private sealed class GraphCanvasMarkerGroupContext
@@ -1917,7 +2170,7 @@ public sealed class GraphCanvas : FrameworkElement
         }
     }
 
-    private sealed record GraphCanvasFocusContext(string? NodeId, string? LinkId, string? GroupId, string SearchText)
+    private sealed record GraphCanvasFocusContext(string? NodeId, string? LinkId, string? GroupId, string SearchText, bool IsFocusMode)
     {
         public bool IsActive => NodeId is not null
             || LinkId is not null

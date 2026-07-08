@@ -1,5 +1,6 @@
 using System.Windows;
 using VIA.WPF.Graph.Core.Layout;
+using VIA.WPF.Graph.Core.Model;
 using VIA.WPF.Graph.Core.Requests;
 using VIA.WPF.Graph.Wpf.Controls;
 using VIA.WPF.Graph.Wpf.Tests.Support;
@@ -50,6 +51,7 @@ public sealed class GraphCanvasTests
             bool focused = canvas.FocusNode("main");
 
             Assert.True(focused);
+            Assert.Equal(GraphViewMode.Focus, canvas.ActiveViewMode);
             Assert.Equal("main", canvas.FocusedNodeId);
             Assert.Null(canvas.FocusedLinkId);
             Assert.Null(canvas.FocusedGroupId);
@@ -136,6 +138,7 @@ public sealed class GraphCanvasTests
 
             canvas.ReturnToOverview();
 
+            Assert.Equal(GraphViewMode.Overview, canvas.ActiveViewMode);
             Assert.Null(canvas.FocusedNodeId);
             Assert.Null(canvas.FocusedLinkId);
             Assert.Null(canvas.FocusedGroupId);
@@ -311,6 +314,44 @@ public sealed class GraphCanvasTests
 
             Assert.False(canvas.IsMarkerGroupFilterEnabled);
             Assert.Equal(new[] { "work" }, canvas.SelectedGroupIds);
+        });
+    }
+
+    [Fact]
+    public void ShowAreaOverview_SetsGroupOverviewAndClearsFocus()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphCanvas canvas = CreateArrangedCanvasWithDocument();
+            Assert.True(canvas.FocusNode("main"));
+            canvas.SearchText = "main";
+
+            canvas.ShowAreaOverview();
+
+            Assert.Equal(GraphViewMode.GroupOverview, canvas.ActiveViewMode);
+            Assert.True(canvas.IsAreaOverviewActive);
+            Assert.Null(canvas.FocusedNodeId);
+            Assert.Null(canvas.FocusedLinkId);
+            Assert.Null(canvas.FocusedGroupId);
+            Assert.Equal(string.Empty, canvas.SearchText);
+        });
+    }
+
+    [Fact]
+    public void VisualDensity_IsCoercedToSupportedRange()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphCanvas canvas = new()
+            {
+                VisualDensity = 0.1d
+            };
+
+            AssertClose(0.55d, canvas.VisualDensity);
+
+            canvas.VisualDensity = 10d;
+
+            AssertClose(1.35d, canvas.VisualDensity);
         });
     }
 
