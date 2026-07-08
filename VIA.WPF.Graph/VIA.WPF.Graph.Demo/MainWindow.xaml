@@ -1,262 +1,138 @@
 <Window x:Class="VIA.WPF.Graph.Demo.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="VIA.WPF.Graph – P0-003 Minimalgraph"
-        Width="1160"
-        Height="780"
-        MinWidth="900"
-        MinHeight="620">
-  <Grid Margin="20">
+        xmlns:graphControls="clr-namespace:VIA.WPF.Graph.Wpf.Controls;assembly=VIA.WPF.Graph.Wpf"
+        Title="VIA.WPF.Graph – Phase 5 Demo Testsets"
+        Width="1420"
+        Height="880"
+        MinWidth="1100"
+        MinHeight="700">
+  <Grid Margin="18">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="14" />
       <RowDefinition Height="*" />
-      <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
     <DockPanel Grid.Row="0">
       <StackPanel DockPanel.Dock="Left">
         <TextBlock FontSize="22"
                    FontWeight="SemiBold"
-                   Text="P0-003 – Minimalgraph als technische Referenz" />
+                   Text="Phase 5 – Demo-Testsets" />
         <TextBlock Margin="0,6,0,0"
-                   TextWrapping="Wrap"
-                   Text="Der feste Testgraph wird aus Rubjerg.Graphviz-Geometrie als einfache WPF-Testansicht gezeigt." />
+                   Text="Small, Medium und Large validieren neutrale Graphdokumente, Graphviz-Layout und WPF-Rendering vor der UserFlow-Integration."
+                   TextWrapping="Wrap" />
         <TextBlock Margin="0,6,0,0"
                    FontWeight="SemiBold"
                    Text="{Binding ResultText}"
                    TextWrapping="Wrap" />
       </StackPanel>
-      <Button DockPanel.Dock="Right"
-              MinWidth="180"
-              Padding="14,7"
-              VerticalAlignment="Top"
-              Command="{Binding RunVerificationCommand}"
-              Content="Referenz erneut ausführen" />
     </DockPanel>
 
-    <TabControl Grid.Row="2">
-      <TabItem Header="Oben → Unten (TB)"
-               DataContext="{Binding TopToBottomLayout}">
-        <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto"
-                      Padding="12">
-          <Grid Width="{Binding CanvasWidth}"
-                Height="{Binding CanvasHeight}"
-                Background="#FFF8F8F8">
-            <ItemsControl Panel.ZIndex="0"
-                          IsHitTestVisible="False"
-                          ItemsSource="{Binding Clusters}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <Canvas />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemContainerStyle>
-                <Style TargetType="{x:Type ContentPresenter}">
-                  <Setter Property="Canvas.Left" Value="{Binding X}" />
-                  <Setter Property="Canvas.Top" Value="{Binding Y}" />
-                </Style>
-              </ItemsControl.ItemContainerStyle>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Grid Width="{Binding Width}"
-                        Height="{Binding Height}">
-                    <Rectangle Stroke="#FF607D8B"
-                               StrokeThickness="1.5"
-                               StrokeDashArray="4,3"
-                               Fill="#114F6A7A" />
-                    <Border HorizontalAlignment="Left"
-                            VerticalAlignment="Top"
-                            Margin="8,6,0,0"
-                            Padding="5,2"
-                            Background="#FFF8F8F8">
-                      <TextBlock FontWeight="SemiBold"
-                                 Foreground="#FF3F5865"
-                                 Text="{Binding Title}" />
-                    </Border>
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+    <Grid Grid.Row="2">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="320" />
+        <ColumnDefinition Width="14" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
 
-            <ItemsControl Panel.ZIndex="1"
-                          IsHitTestVisible="False"
-                          ItemsSource="{Binding Edges}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <Canvas />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Grid>
-                    <Polyline Points="{Binding Points}"
-                              Stroke="{Binding Stroke}"
-                              StrokeThickness="1.7"
-                              StrokeDashArray="{Binding StrokeDashArray}" />
-                    <Polygon Points="{Binding ArrowHeadPoints}"
-                             Fill="{Binding Stroke}" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+      <Border Grid.Column="0"
+              Padding="14"
+              BorderBrush="#FFCBD5DF"
+              BorderThickness="1"
+              Background="#FFF8FAFC">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <TextBlock FontWeight="SemiBold"
+                       Text="Testset" />
+            <ComboBox Margin="0,6,0,12"
+                      ItemsSource="{Binding TestSets}"
+                      SelectedItem="{Binding SelectedTestSet, Mode=TwoWay}"
+                      DisplayMemberPath="Name" />
 
-            <ItemsControl Panel.ZIndex="2"
-                          IsHitTestVisible="False"
-                          ItemsSource="{Binding Nodes}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <Canvas />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemContainerStyle>
-                <Style TargetType="{x:Type ContentPresenter}">
-                  <Setter Property="Canvas.Left" Value="{Binding X}" />
-                  <Setter Property="Canvas.Top" Value="{Binding Y}" />
-                </Style>
-              </ItemsControl.ItemContainerStyle>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Width="{Binding Width}"
-                          Height="{Binding Height}"
-                          Padding="8,4"
-                          Background="{Binding Fill}"
-                          BorderBrush="{Binding BorderBrush}"
-                          BorderThickness="1.5"
-                          CornerRadius="4">
-                    <TextBlock HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               FontWeight="SemiBold"
-                               Text="{Binding Title}"
-                               TextAlignment="Center"
-                               TextTrimming="CharacterEllipsis" />
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Grid>
+            <TextBlock FontWeight="SemiBold"
+                       Text="Layout direction" />
+            <ComboBox Margin="0,6,0,12"
+                      ItemsSource="{Binding LayoutDirections}"
+                      SelectedItem="{Binding SelectedDirection, Mode=TwoWay}" />
+
+            <Button Padding="12,7"
+                    Command="{Binding RunLayoutCommand}"
+                    Content="Layout erneut ausführen" />
+
+            <Separator Margin="0,14,0,14" />
+
+            <TextBlock FontWeight="SemiBold"
+                       Text="Ansicht" />
+            <Button Margin="0,8,0,0"
+                    Padding="12,7"
+                    Command="{Binding ShowAreaOverviewCommand}"
+                    Content="Bereichsübersicht" />
+            <Button Margin="0,8,0,0"
+                    Padding="12,7"
+                    Command="{Binding ShowFullGraphCommand}"
+                    Content="Gesamtgraph" />
+
+            <Separator Margin="0,14,0,14" />
+
+            <TextBlock FontWeight="SemiBold"
+                       Text="Visuelle Dichte" />
+            <UniformGrid Margin="0,8,0,0"
+                         Columns="2">
+              <Button Margin="0,0,4,0"
+                      Padding="10,7"
+                      Command="{Binding SetCompactDensityCommand}"
+                      Content="Kompakt" />
+              <Button Margin="4,0,0,0"
+                      Padding="10,7"
+                      Command="{Binding SetNormalDensityCommand}"
+                      Content="Normal" />
+            </UniformGrid>
+
+            <Separator Margin="0,14,0,14" />
+
+            <TextBlock FontWeight="SemiBold"
+                       Text="Beschreibung" />
+            <TextBlock Margin="0,6,0,0"
+                       Text="{Binding SelectedTestSet.Description}"
+                       TextWrapping="Wrap" />
+
+            <Expander Margin="0,14,0,0"
+                      Header="Technische Details"
+                      IsExpanded="True">
+              <TextBox Margin="0,8,0,0"
+                       MinHeight="260"
+                       IsReadOnly="True"
+                       AcceptsReturn="True"
+                       Text="{Binding TechnicalDetails, Mode=OneWay}"
+                       TextWrapping="NoWrap"
+                       VerticalScrollBarVisibility="Auto"
+                       HorizontalScrollBarVisibility="Auto"
+                       FontFamily="Consolas"
+                       FontSize="12"
+                       Padding="10" />
+            </Expander>
+          </StackPanel>
         </ScrollViewer>
-      </TabItem>
+      </Border>
 
-      <TabItem Header="Links → Rechts (LR)"
-               DataContext="{Binding LeftToRightLayout}">
-        <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto"
-                      Padding="12">
-          <Grid Width="{Binding CanvasWidth}"
-                Height="{Binding CanvasHeight}"
-                Background="#FFF8F8F8">
-            <ItemsControl Panel.ZIndex="0"
-                          IsHitTestVisible="False"
-                          ItemsSource="{Binding Clusters}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <Canvas />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemContainerStyle>
-                <Style TargetType="{x:Type ContentPresenter}">
-                  <Setter Property="Canvas.Left" Value="{Binding X}" />
-                  <Setter Property="Canvas.Top" Value="{Binding Y}" />
-                </Style>
-              </ItemsControl.ItemContainerStyle>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Grid Width="{Binding Width}"
-                        Height="{Binding Height}">
-                    <Rectangle Stroke="#FF607D8B"
-                               StrokeThickness="1.5"
-                               StrokeDashArray="4,3"
-                               Fill="#114F6A7A" />
-                    <Border HorizontalAlignment="Left"
-                            VerticalAlignment="Top"
-                            Margin="8,6,0,0"
-                            Padding="5,2"
-                            Background="#FFF8F8F8">
-                      <TextBlock FontWeight="SemiBold"
-                                 Foreground="#FF3F5865"
-                                 Text="{Binding Title}" />
-                    </Border>
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <ItemsControl Panel.ZIndex="1"
-                          IsHitTestVisible="False"
-                          ItemsSource="{Binding Edges}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <Canvas />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Grid>
-                    <Polyline Points="{Binding Points}"
-                              Stroke="{Binding Stroke}"
-                              StrokeThickness="1.7"
-                              StrokeDashArray="{Binding StrokeDashArray}" />
-                    <Polygon Points="{Binding ArrowHeadPoints}"
-                             Fill="{Binding Stroke}" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <ItemsControl Panel.ZIndex="2"
-                          IsHitTestVisible="False"
-                          ItemsSource="{Binding Nodes}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <Canvas />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemContainerStyle>
-                <Style TargetType="{x:Type ContentPresenter}">
-                  <Setter Property="Canvas.Left" Value="{Binding X}" />
-                  <Setter Property="Canvas.Top" Value="{Binding Y}" />
-                </Style>
-              </ItemsControl.ItemContainerStyle>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Width="{Binding Width}"
-                          Height="{Binding Height}"
-                          Padding="8,4"
-                          Background="{Binding Fill}"
-                          BorderBrush="{Binding BorderBrush}"
-                          BorderThickness="1.5"
-                          CornerRadius="4">
-                    <TextBlock HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               FontWeight="SemiBold"
-                               Text="{Binding Title}"
-                               TextAlignment="Center"
-                               TextTrimming="CharacterEllipsis" />
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Grid>
-        </ScrollViewer>
-      </TabItem>
-    </TabControl>
-
-    <Expander Grid.Row="3"
-              Margin="0,12,0,0"
-              Header="Technische Details">
-      <TextBox Margin="0,8,0,0"
-               MaxHeight="220"
-               IsReadOnly="True"
-               AcceptsReturn="True"
-               Text="{Binding TechnicalDetails, Mode=OneWay}"
-               TextWrapping="NoWrap"
-               VerticalScrollBarVisibility="Auto"
-               HorizontalScrollBarVisibility="Auto"
-               FontFamily="Consolas"
-               FontSize="13"
-               Padding="10" />
-    </Expander>
+      <Border x:Name="GraphCanvasHost"
+              Grid.Column="2"
+              ClipToBounds="True"
+              BorderBrush="#FFCBD5DF"
+              BorderThickness="1"
+              Background="#FFFFFFFF">
+        <graphControls:GraphCanvas x:Name="GraphCanvasView"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch"
+                                   Document="{Binding CurrentDocument}"
+                                   LayoutResult="{Binding CurrentLayout}"
+                                   ActiveViewMode="{Binding ActiveViewMode, Mode=TwoWay}"
+                                   VisualDensity="{Binding VisualDensity, Mode=TwoWay}"
+                                   Zoom="{Binding Zoom, Mode=TwoWay}"
+                                   PanX="{Binding PanX, Mode=TwoWay}"
+                                   PanY="{Binding PanY, Mode=TwoWay}" />
+      </Border>
+    </Grid>
   </Grid>
 </Window>
