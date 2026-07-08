@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using VIA.WPF.Graph.Core.Layout;
+using VIA.WPF.Graph.Core.Model;
 using VIA.WPF.Graph.Core.Requests;
 
 namespace VIA.WPF.Graph.Wpf.Controls;
@@ -20,6 +21,15 @@ public sealed class GraphCanvas : FrameworkElement
             null,
             FrameworkPropertyMetadataOptions.AffectsMeasure,
             OnLayoutResultChanged));
+
+    public static readonly DependencyProperty DocumentProperty = DependencyProperty.Register(
+        nameof(Document),
+        typeof(GraphDocument),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            null,
+            FrameworkPropertyMetadataOptions.AffectsRender,
+            OnDocumentChanged));
 
     private static readonly DependencyPropertyKey LayoutBoundsPropertyKey = DependencyProperty.RegisterReadOnly(
         nameof(LayoutBounds),
@@ -110,6 +120,15 @@ public sealed class GraphCanvas : FrameworkElement
             FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
             OnCollapsedGroupIdsChanged));
 
+    public static readonly DependencyProperty IsMarkerGroupFilterEnabledProperty = DependencyProperty.Register(
+        nameof(IsMarkerGroupFilterEnabled),
+        typeof(bool),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            false,
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnMarkerGroupFilterChanged));
+
     public static readonly DependencyProperty FocusedNodeIdProperty = DependencyProperty.Register(
         nameof(FocusedNodeId),
         typeof(string),
@@ -166,6 +185,7 @@ public sealed class GraphCanvas : FrameworkElement
     private static readonly Brush BackgroundBrush = CreateFrozenBrush(Color.FromRgb(248, 248, 248));
     private static readonly Brush GroupFillBrush = CreateFrozenBrush(Color.FromArgb(20, 96, 125, 139));
     private static readonly Brush SelectedGroupFillBrush = CreateFrozenBrush(Color.FromArgb(32, 30, 115, 190));
+    private static readonly Brush MarkerGroupFillBrush = CreateFrozenBrush(Color.FromArgb(28, 255, 193, 7));
     private static readonly Brush CollapsedGroupFillBrush = CreateFrozenBrush(Color.FromRgb(236, 242, 246));
     private static readonly Brush CollapsedBadgeFillBrush = CreateFrozenBrush(Color.FromRgb(30, 115, 190));
     private static readonly Brush CollapsedBadgeTextBrush = CreateFrozenBrush(Color.FromRgb(255, 255, 255));
@@ -175,6 +195,7 @@ public sealed class GraphCanvas : FrameworkElement
     private static readonly Brush SelectionBrush = CreateFrozenBrush(Color.FromRgb(30, 115, 190));
     private static readonly Pen GroupPen = CreateFrozenPen(Color.FromRgb(96, 125, 139), 1.25d, DashStyles.Dash);
     private static readonly Pen SelectedGroupPen = CreateFrozenPen(Color.FromRgb(30, 115, 190), 2.25d, DashStyles.Dash);
+    private static readonly Pen MarkerGroupPen = CreateFrozenPen(Color.FromRgb(255, 152, 0), 2d, DashStyles.Dash);
     private static readonly Pen CollapsedGroupPen = CreateFrozenPen(Color.FromRgb(76, 104, 122), 2d, DashStyles.Solid);
     private static readonly Pen EdgePen = CreateFrozenPen(Color.FromRgb(84, 96, 108), 1.5d, DashStyles.Solid);
     private static readonly Pen SelectedEdgePen = CreateFrozenPen(Color.FromRgb(30, 115, 190), 2.5d, DashStyles.Solid);
@@ -205,6 +226,12 @@ public sealed class GraphCanvas : FrameworkElement
     {
         get => (GraphLayoutResult?)GetValue(LayoutResultProperty);
         set => SetValue(LayoutResultProperty, value);
+    }
+
+    public GraphDocument? Document
+    {
+        get => (GraphDocument?)GetValue(DocumentProperty);
+        set => SetValue(DocumentProperty, value);
     }
 
     public GraphRect LayoutBounds => (GraphRect)GetValue(LayoutBoundsProperty);
@@ -261,6 +288,12 @@ public sealed class GraphCanvas : FrameworkElement
     {
         get => (IReadOnlyList<string>?)GetValue(CollapsedGroupIdsProperty) ?? Array.Empty<string>();
         set => SetValue(CollapsedGroupIdsProperty, CopySelection(value));
+    }
+
+    public bool IsMarkerGroupFilterEnabled
+    {
+        get => (bool)GetValue(IsMarkerGroupFilterEnabledProperty);
+        set => SetValue(IsMarkerGroupFilterEnabledProperty, value);
     }
 
     public string? FocusedNodeId
@@ -371,7 +404,7 @@ public sealed class GraphCanvas : FrameworkElement
     public bool FocusGroup(string groupId)
     {
         string? normalizedGroupId = NormalizeOptionalText(groupId);
-        if (normalizedGroupId is null || !TryGetGroupBounds(normalizedGroupId, out GraphRect bounds))
+        if (normalizedGroupId is null || !TryGetGroupFocusBounds(normalizedGroupId, out GraphRect bounds))
         {
             return false;
         }
@@ -391,7 +424,7 @@ public sealed class GraphCanvas : FrameworkElement
     public bool SetGroupCollapsed(string groupId, bool isCollapsed)
     {
         string? normalizedGroupId = NormalizeOptionalText(groupId);
-        if (normalizedGroupId is null || !TryGetGroupBounds(normalizedGroupId, out _))
+        if (normalizedGroupId is null || !TryGetContainerGroupBounds(normalizedGroupId, out _))
         {
             return false;
         }
@@ -415,6 +448,39 @@ public sealed class GraphCanvas : FrameworkElement
         return SetGroupCollapsed(normalizedGroupId, !isCollapsed);
     }
 
+    public bool SelectMarkerGroup(string groupId, bool isMultiSelection = false)
+    {
+        string? normalizedGroupId = NormalizeOptionalText(groupId);
+        if (normalizedGroupId is null || !IsMarkerGroup(normalizedGroupId))
+        {
+            return false;
+        }
+
+        SetCurrentValue(SelectedGroupIdsProperty, UpdateSelection(SelectedGroupIds, normalizedGroupId, isMultiSelection));
+        if (!isMultiSelection)
+        {
+            SetCurrentValue(SelectedNodeIdsProperty, Array.Empty<string>());
+            SetCurrentValue(SelectedLinkIdsProperty, Array.Empty<string>());
+        }
+
+        ExecuteGraphRequest(GraphRequest.SelectGroup(normalizedGroupId, isMultiSelection));
+        return true;
+    }
+
+    public bool FocusMarkerGroup(string groupId)
+    {
+        string? normalizedGroupId = NormalizeOptionalText(groupId);
+        return normalizedGroupId is not null
+            && IsMarkerGroup(normalizedGroupId)
+            && FocusGroup(normalizedGroupId);
+    }
+
+    public void ClearMarkerGroupFilter()
+    {
+        SetCurrentValue(IsMarkerGroupFilterEnabledProperty, false);
+        SetCurrentValue(SelectedGroupIdsProperty, SelectedGroupIds.Where(groupId => !IsMarkerGroup(groupId)).ToArray());
+    }
+
     public bool FocusFirstMatch(string searchText)
     {
         string normalizedSearchText = searchText ?? string.Empty;
@@ -435,6 +501,13 @@ public sealed class GraphCanvas : FrameworkElement
         if (group is not null)
         {
             return FocusGroup(group.GroupId);
+        }
+
+        GraphGroup? markerGroup = GetMarkerGroups()
+            .FirstOrDefault(item => ContainsText(item.Id, normalizedSearchText) || ContainsText(item.Title, normalizedSearchText));
+        if (markerGroup is not null)
+        {
+            return FocusMarkerGroup(markerGroup.Id);
         }
 
         GraphLayoutEdge? edge = layoutResult.Edges.FirstOrDefault(item => ContainsText(item.LinkId, normalizedSearchText));
@@ -606,6 +679,14 @@ public sealed class GraphCanvas : FrameworkElement
         canvas.InvalidateVisual();
     }
 
+    private static void OnDocumentChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
+    {
+        GraphCanvas canvas = (GraphCanvas)dependencyObject;
+        canvas.RenderLayers(canvas.LayoutResult);
+        canvas.ApplyCurrentFocusToViewport();
+        canvas.InvalidateVisual();
+    }
+
     private static void OnViewportPropertyChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
     {
         GraphCanvas canvas = (GraphCanvas)dependencyObject;
@@ -628,6 +709,13 @@ public sealed class GraphCanvas : FrameworkElement
     }
 
     private static void OnCollapsedGroupIdsChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
+    {
+        GraphCanvas canvas = (GraphCanvas)dependencyObject;
+        canvas.RenderLayers(canvas.LayoutResult);
+        canvas.InvalidateVisual();
+    }
+
+    private static void OnMarkerGroupFilterChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
     {
         GraphCanvas canvas = (GraphCanvas)dependencyObject;
         canvas.RenderLayers(canvas.LayoutResult);
@@ -682,10 +770,31 @@ public sealed class GraphCanvas : FrameworkElement
         HashSet<string> selectedNodeIds = ToSelectionSet(SelectedNodeIds);
         GraphCanvasFocusContext focusContext = new(FocusedNodeId, FocusedLinkId, FocusedGroupId, SearchText);
         GraphCanvasCollapseContext collapseContext = GraphCanvasCollapseContext.Create(layoutResult, CollapsedGroupIds);
+        GraphCanvasMarkerGroupContext markerGroupContext = GraphCanvasMarkerGroupContext.Create(
+            Document,
+            layoutResult,
+            SelectedGroupIds,
+            FocusedGroupId,
+            SearchText,
+            IsMarkerGroupFilterEnabled);
 
-        groupLayer.Render(drawingContext => DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds, focusContext, collapseContext));
-        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges, selectedLinkIds, focusContext, collapseContext));
-        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes, selectedNodeIds, focusContext, collapseContext));
+        groupLayer.Render(drawingContext =>
+        {
+            DrawMarkerGroupHighlights(drawingContext, markerGroupContext);
+            DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds, focusContext, collapseContext);
+        });
+        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges, selectedLinkIds, focusContext, collapseContext, markerGroupContext));
+        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes, selectedNodeIds, focusContext, collapseContext, markerGroupContext));
+    }
+
+    private void DrawMarkerGroupHighlights(DrawingContext drawingContext, GraphCanvasMarkerGroupContext markerGroupContext)
+    {
+        foreach (GraphCanvasMarkerGroupHighlight highlight in markerGroupContext.Highlights)
+        {
+            Rect bounds = ToRect(Expand(highlight.Bounds, 10d));
+            drawingContext.DrawRoundedRectangle(MarkerGroupFillBrush, MarkerGroupPen, bounds, NodeCornerRadius, NodeCornerRadius);
+            DrawText(drawingContext, highlight.Title, bounds, SelectionBrush, TextAlignment.Left, 8d, 2d);
+        }
     }
 
     private void DrawGroups(
@@ -725,11 +834,12 @@ public sealed class GraphCanvas : FrameworkElement
         IReadOnlyList<GraphLayoutEdge> edges,
         IReadOnlySet<string> selectedLinkIds,
         GraphCanvasFocusContext focusContext,
-        GraphCanvasCollapseContext collapseContext)
+        GraphCanvasCollapseContext collapseContext,
+        GraphCanvasMarkerGroupContext markerGroupContext)
     {
         foreach (GraphLayoutEdge edge in edges)
         {
-            if (edge.Points.Count < 2 || collapseContext.IsEdgeBundled(edge))
+            if (edge.Points.Count < 2 || collapseContext.IsEdgeBundled(edge) || !markerGroupContext.IsEdgeVisible(edge))
             {
                 continue;
             }
@@ -737,8 +847,9 @@ public sealed class GraphCanvas : FrameworkElement
             bool isSelected = selectedLinkIds.Contains(edge.LinkId);
             bool isFocused = StringComparer.Ordinal.Equals(focusContext.LinkId, edge.LinkId);
             bool isSearchMatch = focusContext.MatchesSearch(edge.LinkId);
-            bool isHighlighted = isSelected || isFocused || isSearchMatch;
-            bool isDimmed = focusContext.IsActive && !isHighlighted;
+            bool isMarkerGroupMatch = markerGroupContext.IsEdgeHighlighted(edge);
+            bool isHighlighted = isSelected || isFocused || isSearchMatch || isMarkerGroupMatch;
+            bool isDimmed = (focusContext.IsActive && !isHighlighted) || markerGroupContext.IsEdgeDimmed(edge);
             Pen pen = isHighlighted ? SelectedEdgePen : edge.UsesFallbackGeometry ? FallbackEdgePen : EdgePen;
 
             DrawWithOptionalOpacity(drawingContext, isDimmed, () =>
@@ -760,11 +871,12 @@ public sealed class GraphCanvas : FrameworkElement
         IReadOnlyList<GraphLayoutNode> nodes,
         IReadOnlySet<string> selectedNodeIds,
         GraphCanvasFocusContext focusContext,
-        GraphCanvasCollapseContext collapseContext)
+        GraphCanvasCollapseContext collapseContext,
+        GraphCanvasMarkerGroupContext markerGroupContext)
     {
         foreach (GraphLayoutNode node in nodes)
         {
-            if (collapseContext.IsNodeHidden(node))
+            if (collapseContext.IsNodeHidden(node) || !markerGroupContext.IsNodeVisible(node))
             {
                 continue;
             }
@@ -772,8 +884,9 @@ public sealed class GraphCanvas : FrameworkElement
             bool isSelected = selectedNodeIds.Contains(node.NodeId);
             bool isFocused = StringComparer.Ordinal.Equals(focusContext.NodeId, node.NodeId);
             bool isSearchMatch = focusContext.MatchesSearch(node.NodeId);
-            bool isHighlighted = isSelected || isFocused || isSearchMatch;
-            bool isDimmed = focusContext.IsActive && !isHighlighted;
+            bool isMarkerGroupMatch = markerGroupContext.IsNodeHighlighted(node);
+            bool isHighlighted = isSelected || isFocused || isSearchMatch || isMarkerGroupMatch;
+            bool isDimmed = (focusContext.IsActive && !isHighlighted) || markerGroupContext.IsNodeDimmed(node);
             Rect rect = ToRect(node.Bounds);
 
             DrawWithOptionalOpacity(drawingContext, isDimmed, () =>
@@ -883,6 +996,13 @@ public sealed class GraphCanvas : FrameworkElement
 
         Point contentPoint = ViewToContent(viewPoint);
         GraphCanvasCollapseContext collapseContext = GraphCanvasCollapseContext.Create(layoutResult, CollapsedGroupIds);
+        GraphCanvasMarkerGroupContext markerGroupContext = GraphCanvasMarkerGroupContext.Create(
+            Document,
+            layoutResult,
+            SelectedGroupIds,
+            FocusedGroupId,
+            SearchText,
+            IsMarkerGroupFilterEnabled);
 
         for (int index = layoutResult.Groups.Count - 1; index >= 0; index--)
         {
@@ -896,7 +1016,7 @@ public sealed class GraphCanvas : FrameworkElement
         for (int index = layoutResult.Nodes.Count - 1; index >= 0; index--)
         {
             GraphLayoutNode node = layoutResult.Nodes[index];
-            if (!collapseContext.IsNodeHidden(node) && ToRect(node.Bounds).Contains(contentPoint))
+            if (!collapseContext.IsNodeHidden(node) && markerGroupContext.IsNodeVisible(node) && ToRect(node.Bounds).Contains(contentPoint))
             {
                 return new GraphCanvasHit(GraphCanvasHitKind.Node, node.NodeId);
             }
@@ -905,7 +1025,7 @@ public sealed class GraphCanvas : FrameworkElement
         double edgeTolerance = EdgeHitTolerance / Math.Max(Zoom, 0.000001d);
         foreach (GraphLayoutEdge edge in layoutResult.Edges)
         {
-            if (edge.Points.Count < 2 || collapseContext.IsEdgeBundled(edge))
+            if (edge.Points.Count < 2 || collapseContext.IsEdgeBundled(edge) || !markerGroupContext.IsEdgeVisible(edge))
             {
                 continue;
             }
@@ -1051,7 +1171,7 @@ public sealed class GraphCanvas : FrameworkElement
             return;
         }
 
-        if (property == FocusedGroupIdProperty && TryGetGroupBounds(id, out GraphRect groupBounds))
+        if (property == FocusedGroupIdProperty && TryGetGroupFocusBounds(id, out GraphRect groupBounds))
         {
             FitToBounds(groupBounds, RenderSize, DefaultFitPadding);
         }
@@ -1076,7 +1196,7 @@ public sealed class GraphCanvas : FrameworkElement
             return;
         }
 
-        if (FocusedGroupId is not null && TryGetGroupBounds(FocusedGroupId, out GraphRect groupBounds))
+        if (FocusedGroupId is not null && TryGetGroupFocusBounds(FocusedGroupId, out GraphRect groupBounds))
         {
             FitToBounds(groupBounds, RenderSize, DefaultFitPadding);
         }
@@ -1110,9 +1230,72 @@ public sealed class GraphCanvas : FrameworkElement
 
     private bool TryGetGroupBounds(string groupId, out GraphRect bounds)
     {
+        return TryGetContainerGroupBounds(groupId, out bounds);
+    }
+
+    private bool TryGetContainerGroupBounds(string groupId, out GraphRect bounds)
+    {
         GraphLayoutGroup? group = LayoutResult?.Groups.FirstOrDefault(item => StringComparer.Ordinal.Equals(item.GroupId, groupId));
         bounds = group?.Bounds ?? default;
         return group is not null;
+    }
+
+    private bool TryGetGroupFocusBounds(string groupId, out GraphRect bounds)
+    {
+        if (TryGetContainerGroupBounds(groupId, out bounds))
+        {
+            return true;
+        }
+
+        return TryGetMarkerGroupBounds(groupId, out bounds);
+    }
+
+    private bool TryGetMarkerGroupBounds(string groupId, out GraphRect bounds)
+    {
+        if (!IsMarkerGroup(groupId) || LayoutResult is not { Succeeded: true } layoutResult)
+        {
+            bounds = default;
+            return false;
+        }
+
+        HashSet<string> memberNodeIds = GetMarkerGroupMemberNodeIds(groupId);
+        GraphRect[] memberBounds = layoutResult.Nodes
+            .Where(node => memberNodeIds.Contains(node.NodeId))
+            .Select(node => node.Bounds)
+            .ToArray();
+
+        if (memberBounds.Length == 0)
+        {
+            bounds = default;
+            return false;
+        }
+
+        bounds = Union(memberBounds);
+        return true;
+    }
+
+    private bool IsMarkerGroup(string groupId)
+    {
+        return Document?.Groups.Any(group =>
+            group.Kind == GraphGroupKind.Marker
+            && StringComparer.Ordinal.Equals(group.Id, groupId)) == true;
+    }
+
+    private IReadOnlyList<GraphGroup> GetMarkerGroups()
+    {
+        return Document?.Groups
+            .Where(group => group.Kind == GraphGroupKind.Marker)
+            .ToArray()
+            ?? Array.Empty<GraphGroup>();
+    }
+
+    private HashSet<string> GetMarkerGroupMemberNodeIds(string groupId)
+    {
+        return Document?.Nodes
+            .Where(node => node.GroupMemberships.Contains(groupId, StringComparer.Ordinal))
+            .Select(node => node.Id)
+            .ToHashSet(StringComparer.Ordinal)
+            ?? new HashSet<string>(StringComparer.Ordinal);
     }
 
     private bool TryGetLinkBounds(string linkId, out GraphRect bounds)
@@ -1351,6 +1534,30 @@ public sealed class GraphCanvas : FrameworkElement
         return new GraphRect(0d, 0d, 0d, 0d);
     }
 
+    private static GraphRect Union(IReadOnlyList<GraphRect> rects)
+    {
+        if (rects.Count == 0)
+        {
+            return new GraphRect(0d, 0d, 0d, 0d);
+        }
+
+        double minX = rects.Min(rect => rect.X);
+        double minY = rects.Min(rect => rect.Y);
+        double maxX = rects.Max(rect => rect.X + rect.Width);
+        double maxY = rects.Max(rect => rect.Y + rect.Height);
+        return new GraphRect(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private static GraphRect Expand(GraphRect rect, double padding)
+    {
+        double safePadding = Math.Max(0d, padding);
+        return new GraphRect(
+            rect.X - safePadding,
+            rect.Y - safePadding,
+            rect.Width + (safePadding * 2d),
+            rect.Height + (safePadding * 2d));
+    }
+
     private static Rect GetCollapseToggleBounds(GraphRect groupBounds)
     {
         double x = groupBounds.X + Math.Max(4d, groupBounds.Width - CollapseToggleSize - 6d);
@@ -1455,6 +1662,180 @@ public sealed class GraphCanvas : FrameworkElement
         Cursor = previousCursor;
         previousCursor = null;
     }
+
+    private sealed class GraphCanvasMarkerGroupContext
+    {
+        private readonly IReadOnlyDictionary<string, (string SourceNodeId, string TargetNodeId)> linkEndpointsById;
+        private readonly HashSet<string> highlightedNodeIds;
+        private readonly HashSet<string> filterNodeIds;
+        private readonly bool isMarkerGroupActive;
+        private readonly bool isFilterEnabled;
+
+        private GraphCanvasMarkerGroupContext(
+            IReadOnlyList<GraphCanvasMarkerGroupHighlight> highlights,
+            IReadOnlyDictionary<string, (string SourceNodeId, string TargetNodeId)> linkEndpointsById,
+            HashSet<string> highlightedNodeIds,
+            HashSet<string> filterNodeIds,
+            bool isMarkerGroupActive,
+            bool isFilterEnabled)
+        {
+            Highlights = highlights;
+            this.linkEndpointsById = linkEndpointsById;
+            this.highlightedNodeIds = highlightedNodeIds;
+            this.filterNodeIds = filterNodeIds;
+            this.isMarkerGroupActive = isMarkerGroupActive;
+            this.isFilterEnabled = isFilterEnabled;
+        }
+
+        public IReadOnlyList<GraphCanvasMarkerGroupHighlight> Highlights { get; }
+
+        public static GraphCanvasMarkerGroupContext Create(
+            GraphDocument? document,
+            GraphLayoutResult layoutResult,
+            IReadOnlyList<string> selectedGroupIds,
+            string? focusedGroupId,
+            string searchText,
+            bool isFilterEnabled)
+        {
+            if (document is null)
+            {
+                return Empty;
+            }
+
+            GraphGroup[] markerGroups = document.Groups
+                .Where(group => group.Kind == GraphGroupKind.Marker)
+                .ToArray();
+            if (markerGroups.Length == 0)
+            {
+                return Empty;
+            }
+
+            HashSet<string> markerGroupIds = markerGroups
+                .Select(group => group.Id)
+                .ToHashSet(StringComparer.Ordinal);
+
+            HashSet<string> selectedMarkerGroupIds = selectedGroupIds
+                .Where(markerGroupIds.Contains)
+                .ToHashSet(StringComparer.Ordinal);
+
+            HashSet<string> activeMarkerGroupIds = new(selectedMarkerGroupIds, StringComparer.Ordinal);
+            if (!string.IsNullOrWhiteSpace(focusedGroupId) && markerGroupIds.Contains(focusedGroupId))
+            {
+                activeMarkerGroupIds.Add(focusedGroupId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                foreach (GraphGroup markerGroup in markerGroups)
+                {
+                    if (ContainsText(markerGroup.Id, searchText) || ContainsText(markerGroup.Title, searchText))
+                    {
+                        activeMarkerGroupIds.Add(markerGroup.Id);
+                    }
+                }
+            }
+
+            Dictionary<string, HashSet<string>> memberNodeIdsByGroupId = markerGroups.ToDictionary(
+                group => group.Id,
+                group => document.Nodes
+                    .Where(node => node.GroupMemberships.Contains(group.Id, StringComparer.Ordinal))
+                    .Select(node => node.Id)
+                    .ToHashSet(StringComparer.Ordinal),
+                StringComparer.Ordinal);
+
+            HashSet<string> highlightedNodeIds = activeMarkerGroupIds
+                .SelectMany(groupId => memberNodeIdsByGroupId.TryGetValue(groupId, out HashSet<string>? nodeIds) ? nodeIds.AsEnumerable() : Enumerable.Empty<string>())
+                .ToHashSet(StringComparer.Ordinal);
+
+            HashSet<string> filterNodeIds = isFilterEnabled
+                ? selectedMarkerGroupIds
+                    .SelectMany(groupId => memberNodeIdsByGroupId.TryGetValue(groupId, out HashSet<string>? nodeIds) ? nodeIds.AsEnumerable() : Enumerable.Empty<string>())
+                    .ToHashSet(StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+
+            Dictionary<string, GraphLayoutNode> layoutNodeById = layoutResult.Nodes.ToDictionary(node => node.NodeId, StringComparer.Ordinal);
+            List<GraphCanvasMarkerGroupHighlight> highlights = [];
+            foreach (string activeMarkerGroupId in activeMarkerGroupIds)
+            {
+                if (!memberNodeIdsByGroupId.TryGetValue(activeMarkerGroupId, out HashSet<string>? memberNodeIds))
+                {
+                    continue;
+                }
+
+                GraphRect[] bounds = memberNodeIds
+                    .Where(layoutNodeById.ContainsKey)
+                    .Select(nodeId => layoutNodeById[nodeId].Bounds)
+                    .ToArray();
+                if (bounds.Length == 0)
+                {
+                    continue;
+                }
+
+                GraphGroup markerGroup = markerGroups.First(group => StringComparer.Ordinal.Equals(group.Id, activeMarkerGroupId));
+                highlights.Add(new GraphCanvasMarkerGroupHighlight(markerGroup.Id, markerGroup.Title, Union(bounds)));
+            }
+
+            Dictionary<string, (string SourceNodeId, string TargetNodeId)> linkEndpointsById = document.Links.ToDictionary(
+                link => link.Id,
+                link => (SourceNodeId: link.SourceNodeId, TargetNodeId: link.TargetNodeId),
+                StringComparer.Ordinal);
+
+            return new GraphCanvasMarkerGroupContext(
+                highlights,
+                linkEndpointsById,
+                highlightedNodeIds,
+                filterNodeIds,
+                activeMarkerGroupIds.Count > 0,
+                isFilterEnabled && selectedMarkerGroupIds.Count > 0);
+        }
+
+        public bool IsNodeVisible(GraphLayoutNode node)
+        {
+            return !isFilterEnabled || filterNodeIds.Contains(node.NodeId);
+        }
+
+        public bool IsNodeHighlighted(GraphLayoutNode node)
+        {
+            return highlightedNodeIds.Contains(node.NodeId);
+        }
+
+        public bool IsNodeDimmed(GraphLayoutNode node)
+        {
+            return isMarkerGroupActive && !IsNodeHighlighted(node);
+        }
+
+        public bool IsEdgeVisible(GraphLayoutEdge edge)
+        {
+            if (!isFilterEnabled || !linkEndpointsById.TryGetValue(edge.LinkId, out (string SourceNodeId, string TargetNodeId) endpoints))
+            {
+                return true;
+            }
+
+            return filterNodeIds.Contains(endpoints.SourceNodeId)
+                || filterNodeIds.Contains(endpoints.TargetNodeId);
+        }
+
+        public bool IsEdgeHighlighted(GraphLayoutEdge edge)
+        {
+            return linkEndpointsById.TryGetValue(edge.LinkId, out (string SourceNodeId, string TargetNodeId) endpoints)
+                && (highlightedNodeIds.Contains(endpoints.SourceNodeId) || highlightedNodeIds.Contains(endpoints.TargetNodeId));
+        }
+
+        public bool IsEdgeDimmed(GraphLayoutEdge edge)
+        {
+            return isMarkerGroupActive && !IsEdgeHighlighted(edge);
+        }
+
+        private static GraphCanvasMarkerGroupContext Empty { get; } = new(
+            Array.Empty<GraphCanvasMarkerGroupHighlight>(),
+            new Dictionary<string, (string SourceNodeId, string TargetNodeId)>(),
+            new HashSet<string>(StringComparer.Ordinal),
+            new HashSet<string>(StringComparer.Ordinal),
+            isMarkerGroupActive: false,
+            isFilterEnabled: false);
+    }
+
+    private sealed record GraphCanvasMarkerGroupHighlight(string GroupId, string Title, GraphRect Bounds);
 
     private sealed class GraphCanvasCollapseContext
     {

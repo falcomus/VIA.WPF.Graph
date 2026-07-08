@@ -217,6 +217,104 @@ public sealed class GraphCanvasTests
     }
 
     [Fact]
+    public void SetGroupCollapsed_RejectsMarkerGroup()
+    {
+        StaTestRunner.Run(() =>
+        {
+            RecordingGraphRequestCommand command = new();
+            GraphCanvas canvas = CreateArrangedCanvasWithDocument();
+            canvas.GraphRequestCommand = command;
+
+            bool collapsed = canvas.SetGroupCollapsed("critical", isCollapsed: true);
+
+            Assert.False(collapsed);
+            Assert.Empty(canvas.CollapsedGroupIds);
+            Assert.Empty(command.Requests);
+        });
+    }
+
+    [Fact]
+    public void SelectMarkerGroup_UpdatesGroupSelectionAndSendsRequest()
+    {
+        StaTestRunner.Run(() =>
+        {
+            RecordingGraphRequestCommand command = new();
+            GraphCanvas canvas = CreateArrangedCanvasWithDocument();
+            canvas.GraphRequestCommand = command;
+
+            bool selected = canvas.SelectMarkerGroup("critical", isMultiSelection: true);
+
+            Assert.True(selected);
+            Assert.Equal(new[] { "critical" }, canvas.SelectedGroupIds);
+            GraphRequest request = Assert.Single(command.Requests);
+            Assert.Equal(GraphRequestKind.SelectGroup, request.Kind);
+            Assert.Equal("critical", request.GroupId);
+            Assert.True(request.IsMultiSelection);
+        });
+    }
+
+    [Fact]
+    public void SelectMarkerGroup_RejectsContainerGroup()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphCanvas canvas = CreateArrangedCanvasWithDocument();
+
+            bool selected = canvas.SelectMarkerGroup("work");
+
+            Assert.False(selected);
+            Assert.Empty(canvas.SelectedGroupIds);
+        });
+    }
+
+    [Fact]
+    public void FocusMarkerGroup_FitsBoundsAroundMemberNodes()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphCanvas canvas = CreateArrangedCanvasWithDocument();
+
+            bool focused = canvas.FocusMarkerGroup("critical");
+
+            Assert.True(focused);
+            Assert.Equal("critical", canvas.FocusedGroupId);
+            AssertClose(2.164705882352941d, canvas.Zoom);
+            AssertClose(-11.294117647058819d, canvas.PanX);
+            AssertClose(51.05882352941178d, canvas.PanY);
+        });
+    }
+
+    [Fact]
+    public void FocusFirstMatch_CanFocusMarkerGroupTitle()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphCanvas canvas = CreateArrangedCanvasWithDocument();
+
+            bool focused = canvas.FocusFirstMatch("review");
+
+            Assert.True(focused);
+            Assert.Equal("review", canvas.FocusedGroupId);
+        });
+    }
+
+    [Fact]
+    public void ClearMarkerGroupFilter_RemovesOnlyMarkerGroupSelection()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphCanvas canvas = CreateArrangedCanvasWithDocument();
+            canvas.SelectedGroupIds = ["work", "critical", "review"];
+            canvas.IsMarkerGroupFilterEnabled = true;
+
+            canvas.ClearMarkerGroupFilter();
+
+            Assert.False(canvas.IsMarkerGroupFilterEnabled);
+            Assert.Equal(new[] { "work" }, canvas.SelectedGroupIds);
+        });
+    }
+
+    [Fact]
     public void Zoom_IsCoercedToConfiguredLimits()
     {
         StaTestRunner.Run(() =>
@@ -240,6 +338,18 @@ public sealed class GraphCanvasTests
     {
         GraphCanvas canvas = new()
         {
+            LayoutResult = TestGraphLayouts.CreateBasicLayout()
+        };
+        canvas.Measure(new Size(800d, 600d));
+        canvas.Arrange(new Rect(0d, 0d, 800d, 600d));
+        return canvas;
+    }
+
+    private static GraphCanvas CreateArrangedCanvasWithDocument()
+    {
+        GraphCanvas canvas = new()
+        {
+            Document = TestGraphLayouts.CreateBasicDocument(),
             LayoutResult = TestGraphLayouts.CreateBasicLayout()
         };
         canvas.Measure(new Size(800d, 600d));
