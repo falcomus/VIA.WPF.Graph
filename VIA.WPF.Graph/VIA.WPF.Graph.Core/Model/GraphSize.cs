@@ -1,7 +1,7 @@
 namespace VIA.WPF.Graph.Core.Model;
 
 /// <summary>
-/// Represents a neutral width and height in WPF device-independent pixels.
+/// Represents a neutral width and height in device-independent layout units.
 /// </summary>
 public readonly record struct GraphSize
 {
