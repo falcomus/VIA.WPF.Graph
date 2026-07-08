@@ -3,31 +3,43 @@ using System.Collections.ObjectModel;
 namespace VIA.WPF.Graph.Core.Model;
 
 /// <summary>
-/// Represents a neutral graph snapshot supplied by a host application.
+/// Describes a neutral graph group in a host-provided graph snapshot.
 /// </summary>
-public sealed record GraphDocument
+public sealed record GraphGroup
 {
-    public GraphDocument(
+    public GraphGroup(
         string id,
-        IEnumerable<GraphNode>? nodes = null,
-        IEnumerable<GraphLink>? links = null,
-        IReadOnlyDictionary<string, string>? metadata = null,
-        IEnumerable<GraphGroup>? groups = null)
+        string title,
+        GraphGroupKind kind,
+        string? description = null,
+        string? parentGroupId = null,
+        string? visualStyleKey = null,
+        IReadOnlyDictionary<string, string>? metadata = null)
     {
         Id = RequireText(id, nameof(id));
-        Nodes = CopyItems(nodes);
-        Links = CopyItems(links);
-        Groups = CopyItems(groups);
+        Title = RequireText(title, nameof(title));
+        Kind = kind;
+        Description = description;
+        ParentGroupId = string.IsNullOrWhiteSpace(parentGroupId) ? null : parentGroupId;
+        VisualStyleKey = visualStyleKey;
         Metadata = CopyMetadata(metadata);
     }
 
     public string Id { get; }
 
-    public IReadOnlyList<GraphNode> Nodes { get; }
+    public string Title { get; }
 
-    public IReadOnlyList<GraphLink> Links { get; }
+    public GraphGroupKind Kind { get; }
 
-    public IReadOnlyList<GraphGroup> Groups { get; }
+    public string? Description { get; }
+
+    /// <summary>
+    /// Optional parent group identifier for hierarchical container groups.
+    /// It is ignored for marker groups until validation rules are added.
+    /// </summary>
+    public string? ParentGroupId { get; }
+
+    public string? VisualStyleKey { get; }
 
     public IReadOnlyDictionary<string, string> Metadata { get; }
 
@@ -39,11 +51,6 @@ public sealed record GraphDocument
         }
 
         return value;
-    }
-
-    private static IReadOnlyList<T> CopyItems<T>(IEnumerable<T>? items)
-    {
-        return items?.ToArray() ?? Array.Empty<T>();
     }
 
     private static IReadOnlyDictionary<string, string> CopyMetadata(IReadOnlyDictionary<string, string>? metadata)
