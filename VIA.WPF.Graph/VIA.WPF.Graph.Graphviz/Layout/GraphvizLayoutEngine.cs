@@ -1,4 +1,3 @@
-using System.Globalization;
 using Rubjerg.Graphviz;
 using VIA.WPF.Graph.Core.Layout;
 using VIA.WPF.Graph.Core.Model;
@@ -102,7 +101,7 @@ public static class GraphvizLayoutEngine
         return new GraphLayoutResult(
             document.Id,
             options,
-            ToGraphRect(layout.GetBoundingBox()),
+            GraphvizGeometryMapper.ToGraphRect(layout.GetBoundingBox()),
             nodes,
             groups,
             edges);
@@ -113,8 +112,8 @@ public static class GraphvizLayoutEngine
         Node node = source.GetOrAddNode(graphNode.Id);
         node.SetAttribute("shape", "box");
         node.SetAttribute("label", graphNode.Title);
-        node.SetAttribute("width", ToGraphvizInches(graphNode.DefaultSize.Width));
-        node.SetAttribute("height", ToGraphvizInches(graphNode.DefaultSize.Height));
+        node.SetAttribute("width", GraphvizGeometryMapper.ToGraphvizInches(graphNode.DefaultSize.Width));
+        node.SetAttribute("height", GraphvizGeometryMapper.ToGraphvizInches(graphNode.DefaultSize.Height));
         node.SetAttribute("fixedsize", "true");
         return node;
     }
@@ -198,7 +197,7 @@ public static class GraphvizLayoutEngine
         Node layoutNode = layout.GetNode(graphNode.Id)
             ?? throw new InvalidOperationException($"Graphviz layout does not contain node '{graphNode.Id}'.");
 
-        return new GraphLayoutNode(graphNode.Id, ToGraphRect(layoutNode.GetBoundingBox()));
+        return new GraphLayoutNode(graphNode.Id, GraphvizGeometryMapper.ToGraphRect(layoutNode.GetBoundingBox()));
     }
 
     private static GraphLayoutGroup? CreateLayoutGroupOrNull(RootGraph layout, GraphGroup group, string clusterId)
@@ -206,7 +205,7 @@ public static class GraphvizLayoutEngine
         SubGraph? layoutCluster = layout.GetSubgraph(clusterId);
         return layoutCluster is null
             ? null
-            : new GraphLayoutGroup(group.Id, ToGraphRect(layoutCluster.GetBoundingBox()));
+            : new GraphLayoutGroup(group.Id, GraphvizGeometryMapper.ToGraphRect(layoutCluster.GetBoundingBox()));
     }
 
     private static GraphLayoutEdge CreateLayoutEdge(RootGraph layout, GraphLink link)
@@ -225,13 +224,13 @@ public static class GraphvizLayoutEngine
         PointD[] spline = layoutEdge.GetFirstSpline();
         return spline.Length == 0
             ? CreateFallbackEdge(link, sourceNode, targetNode)
-            : new GraphLayoutEdge(link.Id, spline.Select(ToGraphPoint));
+            : new GraphLayoutEdge(link.Id, spline.Select(GraphvizGeometryMapper.ToGraphPoint));
     }
 
     private static GraphLayoutEdge CreateFallbackEdge(GraphLink link, Node sourceNode, Node targetNode)
     {
-        GraphRect sourceBounds = ToGraphRect(sourceNode.GetBoundingBox());
-        GraphRect targetBounds = ToGraphRect(targetNode.GetBoundingBox());
+        GraphRect sourceBounds = GraphvizGeometryMapper.ToGraphRect(sourceNode.GetBoundingBox());
+        GraphRect targetBounds = GraphvizGeometryMapper.ToGraphRect(targetNode.GetBoundingBox());
 
         return new GraphLayoutEdge(
             link.Id,
@@ -317,19 +316,4 @@ public static class GraphvizLayoutEngine
         };
     }
 
-    private static string ToGraphvizInches(double layoutUnits)
-    {
-        const double graphvizPointsPerInch = 72d;
-        return (layoutUnits / graphvizPointsPerInch).ToString(CultureInfo.InvariantCulture);
-    }
-
-    private static GraphPoint ToGraphPoint(PointD point)
-    {
-        return new GraphPoint(point.X, point.Y);
-    }
-
-    private static GraphRect ToGraphRect(RectangleD rectangle)
-    {
-        return new GraphRect(rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
-    }
 }
