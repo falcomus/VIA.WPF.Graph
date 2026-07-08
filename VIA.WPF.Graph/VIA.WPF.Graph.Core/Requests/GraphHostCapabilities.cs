@@ -8,7 +8,7 @@ namespace VIA.WPF.Graph.Core.Requests;
 /// </summary>
 public sealed record GraphHostCapabilities
 {
-    private static readonly GraphRequestKind[] DefaultSupportedRequestKinds =
+    private static readonly GraphRequestKind[] DefaultReadOnlyRequestKinds =
     [
         GraphRequestKind.SelectNode,
         GraphRequestKind.SelectLink,
@@ -19,6 +19,16 @@ public sealed record GraphHostCapabilities
         GraphRequestKind.OpenGroup,
         GraphRequestKind.ReturnToOverview,
         GraphRequestKind.SetGroupCollapsed
+    ];
+
+    private static readonly GraphRequestKind[] DefaultEditableRequestKinds =
+    [
+        ..DefaultReadOnlyRequestKinds,
+        GraphRequestKind.CreateNode,
+        GraphRequestKind.CreateLink,
+        GraphRequestKind.RetargetLink,
+        GraphRequestKind.DeleteNode,
+        GraphRequestKind.DeleteLink
     ];
 
     public GraphHostCapabilities(
@@ -37,7 +47,7 @@ public sealed record GraphHostCapabilities
         }
 
         EditMode = editMode;
-        SupportedRequestKinds = CopyRequestKinds(supportedRequestKinds ?? DefaultSupportedRequestKinds);
+        SupportedRequestKinds = CopyRequestKinds(supportedRequestKinds ?? GetDefaultRequestKinds(editMode));
         CanCreateNodes = canCreateNodes;
         CanCreateLinks = canCreateLinks;
         CanRetargetLinks = canRetargetLinks;
@@ -115,12 +125,27 @@ public sealed record GraphHostCapabilities
 
     public bool Supports(GraphRequestKind requestKind)
     {
-        if (!Enum.IsDefined(typeof(GraphRequestKind), requestKind))
+        if (!Enum.IsDefined(typeof(GraphRequestKind), requestKind) || !SupportedRequestKinds.Contains(requestKind))
         {
             return false;
         }
 
-        return SupportedRequestKinds.Contains(requestKind);
+        return requestKind switch
+        {
+            GraphRequestKind.CreateNode => CanCreateNodes,
+            GraphRequestKind.CreateLink => CanCreateLinks,
+            GraphRequestKind.RetargetLink => CanRetargetLinks,
+            GraphRequestKind.DeleteNode => CanDeleteNodes,
+            GraphRequestKind.DeleteLink => CanDeleteLinks,
+            _ => true,
+        };
+    }
+
+    private static IReadOnlyList<GraphRequestKind> GetDefaultRequestKinds(GraphHostEditMode editMode)
+    {
+        return editMode == GraphHostEditMode.Editable
+            ? DefaultEditableRequestKinds
+            : DefaultReadOnlyRequestKinds;
     }
 
     private static IReadOnlyList<GraphRequestKind> CopyRequestKinds(IEnumerable<GraphRequestKind> requestKinds)

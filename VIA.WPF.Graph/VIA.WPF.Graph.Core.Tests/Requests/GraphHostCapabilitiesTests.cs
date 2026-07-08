@@ -14,6 +14,7 @@ public sealed class GraphHostCapabilitiesTests
         Assert.False(capabilities.HasGraphMutationCapabilities);
         Assert.True(capabilities.Supports(GraphRequest.SelectNode("node-1")));
         Assert.True(capabilities.Supports(GraphRequest.SetGroupCollapsed("group-1", isCollapsed: true)));
+        Assert.False(capabilities.Supports(GraphRequest.CreateNode("node-new", "New node")));
     }
 
     [Fact]
@@ -37,6 +38,11 @@ public sealed class GraphHostCapabilitiesTests
         Assert.True(capabilities.CanRetargetLinks);
         Assert.True(capabilities.CanDeleteNodes);
         Assert.True(capabilities.CanDeleteLinks);
+        Assert.True(capabilities.Supports(GraphRequest.CreateNode("node-new", "New node")));
+        Assert.True(capabilities.Supports(GraphRequest.CreateLink("link-new", "source", "target")));
+        Assert.True(capabilities.Supports(GraphRequest.RetargetLink("link-new", targetNodeId: "target-2")));
+        Assert.True(capabilities.Supports(GraphRequest.DeleteNode("node-new")));
+        Assert.True(capabilities.Supports(GraphRequest.DeleteLink("link-new")));
     }
 
     [Fact]
@@ -89,6 +95,16 @@ public sealed class GraphHostCapabilitiesTests
         Assert.True(handler.Capabilities.IsEditable);
         Assert.False(handler.Capabilities.CanDeleteNodes);
         Assert.True(result.Succeeded);
+    }
+
+
+    [Fact]
+    public void Supports_RespectsMutationCapabilityFlags()
+    {
+        GraphHostCapabilities capabilities = GraphHostCapabilities.Editable(canDeleteNodes: false);
+
+        Assert.True(capabilities.Supports(GraphRequest.CreateNode("node-new", "New node")));
+        Assert.False(capabilities.Supports(GraphRequest.DeleteNode("node-new")));
     }
 
     private sealed class RecordingRequestHandler : IGraphRequestHandler

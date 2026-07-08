@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using VIA.WPF.Graph.Core.Layout;
 using VIA.WPF.Graph.Core.Model;
+using VIA.WPF.Graph.Core.Requests;
 using VIA.WPF.Graph.Core.Validation;
 using VIA.WPF.Graph.Demo.TestData;
 using VIA.WPF.Graph.Graphviz.Layout;
@@ -90,7 +91,16 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     [ObservableProperty]
     private string technicalDetails = string.Empty;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HostCapabilitiesText))]
+    private GraphHostEditMode selectedHostEditMode = GraphHostEditMode.ReadOnly;
+
+    [ObservableProperty]
+    private string lastRequestResultText = "No graph request handled yet.";
+
+    private readonly EditableGraphDemoHost demoHost = new();
     private bool suppressAutomaticLayout;
+    private int demoMutationSequence;
 
     public GraphvizVerificationViewModel()
     {
@@ -101,6 +111,7 @@ public partial class GraphvizVerificationViewModel : ObservableObject
             GraphLayoutDirection.TopToBottom
         ];
 
+        GraphRequestCommand = new AsyncRelayCommand<GraphRequest>(HandleGraphRequestFromCanvasAsync);
         SelectedTestSet = TestSets.FirstOrDefault();
         RunLayoutCommand.Execute(null);
     }
@@ -110,6 +121,14 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     public ObservableCollection<string> MarkerGroupIds { get; } = [];
 
     public IReadOnlyList<GraphLayoutDirection> LayoutDirections { get; }
+
+    public IReadOnlyList<GraphHostEditMode> HostEditModes { get; } =
+    [
+        GraphHostEditMode.ReadOnly,
+        GraphHostEditMode.Editable
+    ];
+
+    public IAsyncRelayCommand<GraphRequest> GraphRequestCommand { get; }
 
     public IReadOnlyList<GraphViewMode> ViewModes { get; } =
     [
@@ -124,6 +143,15 @@ public partial class GraphvizVerificationViewModel : ObservableObject
         : "Fit mode: layout changes, view changes and window resizing keep the graph fitted to the visible area.";
 
     public string ZoomText => $"Zoom: {Zoom:P0}";
+
+    public string HostCapabilitiesText => $"{demoHost.Capabilities.EditMode}: create nodes={demoHost.Capabilities.CanCreateNodes}, create links={demoHost.Capabilities.CanCreateLinks}, retarget links={demoHost.Capabilities.CanRetargetLinks}, delete nodes={demoHost.Capabilities.CanDeleteNodes}, delete links={demoHost.Capabilities.CanDeleteLinks}";
+
+    partial void OnSelectedHostEditModeChanged(GraphHostEditMode value)
+    {
+        demoHost.SetEditMode(value);
+        OnPropertyChanged(nameof(HostCapabilitiesText));
+        LastRequestResultText = $"Demo host switched to {value}.";
+    }
 
     partial void OnSelectedTestSetChanged(GraphDemoTestSet? value)
     {
@@ -166,9 +194,12 @@ public partial class GraphvizVerificationViewModel : ObservableObject
             IsLayoutRunning = true;
             ResultText = $"{testSet.Name}: layout is running ...";
             TechnicalDetails = string.Empty;
-            CurrentDocument = testSet.Document;
+            demoHost.SetEditMode(SelectedHostEditMode);
+            demoHost.LoadSnapshot(testSet.Document);
+            GraphDocument hostSnapshot = demoHost.Snapshot;
+            CurrentDocument = hostSnapshot;
             CurrentLayout = null;
-            UpdateMarkerGroups(testSet.Document);
+            UpdateMarkerGroups(hostSnapshot);
             ActiveViewMode = testSet.DefaultViewMode;
             VisualDensity = testSet.DefaultVisualDensity;
             IsFreeNavigationEnabled = false;
@@ -176,17 +207,17 @@ public partial class GraphvizVerificationViewModel : ObservableObject
             PanX = 0d;
             PanY = 0d;
 
-            GraphValidationResult validation = GraphDocumentValidator.Validate(testSet.Document);
+            GraphValidationResult validation = GraphDocumentValidator.Validate(hostSnapshot);
             GraphLayoutOptions options = new(SelectedDirection, GraphEdgeRoutingStyle.Spline);
             Stopwatch stopwatch = Stopwatch.StartNew();
-            GraphLayoutResult layoutResult = await Task.Run(() => GraphvizLayoutEngine.Layout(testSet.Document, options));
+            GraphLayoutResult layoutResult = await Task.Run(() => GraphvizLayoutEngine.Layout(hostSnapshot, options));
             stopwatch.Stop();
 
             CurrentLayout = layoutResult;
             RequestFit();
-            TechnicalDetails = CreateTechnicalDetails(testSet, validation, layoutResult, stopwatch.Elapsed);
+            TechnicalDetails = CreateTechnicalDetails(testSet, hostSnapshot, validation, layoutResult, stopwatch.Elapsed);
             ResultText = layoutResult.Succeeded
-                ? $"{testSet.Name}: {testSet.NodeCount} nodes, {testSet.LinkCount} links, {testSet.GroupCount} groups laid out in {stopwatch.ElapsedMilliseconds} ms."
+                ? $"{testSet.Name}: {hostSnapshot.Nodes.Count} nodes, {hostSnapshot.Links.Count} links, {hostSnapshot.Groups.Count} groups laid out in {stopwatch.ElapsedMilliseconds} ms."
                 : $"{testSet.Name}: controlled layout error; see technical details.";
         }
         catch (Exception exception)
@@ -251,6 +282,81 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     {
         IsFreeNavigationEnabled = true;
         CenterRequestVersion++;
+    }
+
+    [RelayCommand]
+    private async Task CreateDemoNodeAsync()
+    {
+        if (CurrentDocument is null)
+        {
+            LastRequestResultText = "No current graph snapshot is available.";
+            return;
+        }
+
+        demoMutationSequence++;
+        string nodeId = CreateUniqueNodeId(CurrentDocument, $"demo_node_{demoMutationSequence:00}");
+        string? containerGroupId = CurrentDocument.Groups.FirstOrDefault(group => group.Kind == GraphGroupKind.Container)?.Id;
+
+        await HandleHostRequestAsync(GraphRequest.CreateNode(nodeId, $"Demo node {demoMutationSequence:00}", containerGroupId));
+    }
+
+    [RelayCommand]
+    private async Task CreateDemoLinkAsync()
+    {
+        if (CurrentDocument is not { Nodes.Count: >= 2 } document)
+        {
+            LastRequestResultText = "CreateLink needs at least two nodes.";
+            return;
+        }
+
+        demoMutationSequence++;
+        string linkId = CreateUniqueLinkId(document, $"demo_link_{demoMutationSequence:00}");
+        string sourceNodeId = document.Nodes[document.Nodes.Count - 2].Id;
+        string targetNodeId = document.Nodes[document.Nodes.Count - 1].Id;
+
+        await HandleHostRequestAsync(GraphRequest.CreateLink(linkId, sourceNodeId, targetNodeId));
+    }
+
+    [RelayCommand]
+    private async Task RetargetDemoLinkAsync()
+    {
+        if (CurrentDocument is not { Links.Count: > 0, Nodes.Count: >= 2 } document)
+        {
+            LastRequestResultText = "RetargetLink needs at least one link and two nodes.";
+            return;
+        }
+
+        GraphLink link = document.Links[document.Links.Count - 1];
+        string targetNodeId = document.Nodes.First(node => !string.Equals(node.Id, link.TargetNodeId, StringComparison.Ordinal)).Id;
+
+        await HandleHostRequestAsync(GraphRequest.RetargetLink(link.Id, targetNodeId: targetNodeId));
+    }
+
+    [RelayCommand]
+    private async Task DeleteDemoLinkAsync()
+    {
+        if (CurrentDocument is not { Links.Count: > 0 } document)
+        {
+            LastRequestResultText = "DeleteLink needs at least one link.";
+            return;
+        }
+
+        await HandleHostRequestAsync(GraphRequest.DeleteLink(document.Links[document.Links.Count - 1].Id));
+    }
+
+    [RelayCommand]
+    private async Task DeleteDemoNodeAsync()
+    {
+        if (CurrentDocument is not { Nodes.Count: > 0 } document)
+        {
+            LastRequestResultText = "DeleteNode needs at least one node.";
+            return;
+        }
+
+        GraphNode? demoNode = document.Nodes.LastOrDefault(node => node.Id.StartsWith("demo_node_", StringComparison.Ordinal));
+        GraphNode nodeToDelete = demoNode ?? document.Nodes[document.Nodes.Count - 1];
+
+        await HandleHostRequestAsync(GraphRequest.DeleteNode(nodeToDelete.Id));
     }
 
     private bool HasSelectedMarkerGroup()
@@ -445,6 +551,114 @@ public partial class GraphvizVerificationViewModel : ObservableObject
         }
     }
 
+    private async Task HandleGraphRequestFromCanvasAsync(GraphRequest? request)
+    {
+        if (request is null)
+        {
+            return;
+        }
+
+        await HandleHostRequestAsync(request);
+    }
+
+    private async Task HandleHostRequestAsync(GraphRequest request)
+    {
+        GraphRequestResult result = await demoHost.HandleAsync(request);
+        LastRequestResultText = FormatRequestResult(result);
+
+        if (result.Succeeded && IsMutationRequest(request.Kind))
+        {
+            await RefreshLayoutFromDemoHostAsync();
+        }
+    }
+
+    private async Task RefreshLayoutFromDemoHostAsync()
+    {
+        if (SelectedTestSet is not { } testSet)
+        {
+            return;
+        }
+
+        try
+        {
+            IsLayoutRunning = true;
+            GraphDocument hostSnapshot = demoHost.Snapshot;
+            CurrentDocument = hostSnapshot;
+            CurrentLayout = null;
+            UpdateMarkerGroups(hostSnapshot);
+
+            GraphValidationResult validation = GraphDocumentValidator.Validate(hostSnapshot);
+            GraphLayoutOptions options = new(SelectedDirection, GraphEdgeRoutingStyle.Spline);
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            GraphLayoutResult layoutResult = await Task.Run(() => GraphvizLayoutEngine.Layout(hostSnapshot, options));
+            stopwatch.Stop();
+
+            CurrentLayout = layoutResult;
+            TechnicalDetails = CreateTechnicalDetails(testSet, hostSnapshot, validation, layoutResult, stopwatch.Elapsed);
+            ResultText = layoutResult.Succeeded
+                ? $"Demo host snapshot: {hostSnapshot.Nodes.Count} nodes, {hostSnapshot.Links.Count} links, {hostSnapshot.Groups.Count} groups laid out in {stopwatch.ElapsedMilliseconds} ms."
+                : "Demo host snapshot: controlled layout error; see technical details.";
+            RequestFit();
+        }
+        catch (Exception exception)
+        {
+            CurrentLayout = null;
+            ResultText = "Demo host snapshot layout failed.";
+            TechnicalDetails = exception.ToString();
+        }
+        finally
+        {
+            IsLayoutRunning = false;
+        }
+    }
+
+    private static string CreateUniqueNodeId(GraphDocument document, string baseNodeId)
+    {
+        string nodeId = baseNodeId;
+        int suffix = 2;
+        while (document.Nodes.Any(node => string.Equals(node.Id, nodeId, StringComparison.Ordinal)))
+        {
+            nodeId = $"{baseNodeId}_{suffix}";
+            suffix++;
+        }
+
+        return nodeId;
+    }
+
+    private static string CreateUniqueLinkId(GraphDocument document, string baseLinkId)
+    {
+        string linkId = baseLinkId;
+        int suffix = 2;
+        while (document.Links.Any(link => string.Equals(link.Id, linkId, StringComparison.Ordinal)))
+        {
+            linkId = $"{baseLinkId}_{suffix}";
+            suffix++;
+        }
+
+        return linkId;
+    }
+
+    private static string FormatRequestResult(GraphRequestResult result)
+    {
+        string message = result.Message ?? "No message.";
+        if (!result.HasFeedback)
+        {
+            return $"{result.Status}: {message}";
+        }
+
+        string feedback = string.Join(" | ", result.FeedbackIssues.Select(issue => $"{issue.Severity} {issue.Code}: {issue.Message}"));
+        return $"{result.Status}: {message} | {feedback}";
+    }
+
+    private static bool IsMutationRequest(GraphRequestKind requestKind)
+    {
+        return requestKind is GraphRequestKind.CreateNode
+            or GraphRequestKind.CreateLink
+            or GraphRequestKind.RetargetLink
+            or GraphRequestKind.DeleteNode
+            or GraphRequestKind.DeleteLink;
+    }
+
     [RelayCommand]
     private void SetCompactDensity()
     {
@@ -551,11 +765,11 @@ public partial class GraphvizVerificationViewModel : ObservableObject
 
     private static string CreateTechnicalDetails(
         GraphDemoTestSet testSet,
+        GraphDocument document,
         GraphValidationResult validation,
         GraphLayoutResult layoutResult,
         TimeSpan elapsed)
     {
-        GraphDocument document = testSet.Document;
         int containerGroupCount = document.Groups.Count(group => group.Kind == GraphGroupKind.Container);
         int markerGroupCount = document.Groups.Count(group => group.Kind == GraphGroupKind.Marker);
         int popupNodeCount = document.Nodes.Count(node => node.Kind == GraphNodeKind.Popup);

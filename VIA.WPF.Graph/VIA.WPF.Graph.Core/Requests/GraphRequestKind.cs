@@ -14,4 +14,9 @@ public enum GraphRequestKind
     OpenGroup = 6,
     ReturnToOverview = 7,
     SetGroupCollapsed = 8,
+    CreateNode = 9,
+    CreateLink = 10,
+    RetargetLink = 11,
+    DeleteNode = 12,
+    DeleteLink = 13,
 }
