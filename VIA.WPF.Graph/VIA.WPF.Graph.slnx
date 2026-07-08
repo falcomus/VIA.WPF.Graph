@@ -5,4 +5,5 @@
   <Project Path="VIA.WPF.Graph.Demo/VIA.WPF.Graph.Demo.csproj" />
   <Project Path="VIA.WPF.Graph.Core.Tests/VIA.WPF.Graph.Core.Tests.csproj" />
   <Project Path="VIA.WPF.Graph.Graphviz.Tests/VIA.WPF.Graph.Graphviz.Tests.csproj" />
+  <Project Path="VIA.WPF.Graph.Wpf.Tests/VIA.WPF.Graph.Wpf.Tests.csproj" />
 </Solution>
