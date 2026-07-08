@@ -48,6 +48,70 @@ public sealed class GraphNavigationPathTreeTests
     }
 
     [Fact]
+    public void GraphSelectedNodeIds_SelectsMatchingTreePathWithoutRequest()
+    {
+        StaTestRunner.Run(() =>
+        {
+            RecordingGraphRequestCommand command = new();
+            GraphNavigationPathTree tree = new()
+            {
+                Projection = CreateProjection(),
+                GraphRequestCommand = command
+            };
+
+            tree.GraphSelectedNodeIds = ["finish"];
+
+            Assert.Equal("root:start/link:main_finish", tree.SelectedTreeNodeId);
+            Assert.Equal("finish", tree.SelectedNodeId);
+            Assert.Equal("main_finish", tree.SelectedLinkId);
+            Assert.Empty(command.Requests);
+        });
+    }
+
+    [Fact]
+    public void GraphSelectedLinkIds_SelectsMatchingTreePathWithLinkPrecedence()
+    {
+        StaTestRunner.Run(() =>
+        {
+            RecordingGraphRequestCommand command = new();
+            GraphNavigationPathTree tree = new()
+            {
+                Projection = CreateProjection(),
+                GraphRequestCommand = command,
+                GraphSelectedNodeIds = ["finish"],
+                GraphSelectedLinkIds = ["finish_start_back"]
+            };
+
+            Assert.Equal("root:start/link:main_finish/link:finish_start_back", tree.SelectedTreeNodeId);
+            Assert.Equal("start", tree.SelectedNodeId);
+            Assert.Equal("finish_start_back", tree.SelectedLinkId);
+            Assert.Empty(command.Requests);
+        });
+    }
+
+    [Fact]
+    public void ClearingGraphSelection_ClearsTreeSelectionWithoutRequest()
+    {
+        StaTestRunner.Run(() =>
+        {
+            RecordingGraphRequestCommand command = new();
+            GraphNavigationPathTree tree = new()
+            {
+                Projection = CreateProjection(),
+                GraphRequestCommand = command,
+                GraphSelectedNodeIds = ["finish"]
+            };
+
+            tree.GraphSelectedNodeIds = [];
+
+            Assert.Null(tree.SelectedTreeNodeId);
+            Assert.Null(tree.SelectedNodeId);
+            Assert.Null(tree.SelectedLinkId);
+            Assert.Empty(command.Requests);
+        });
+    }
+
+    [Fact]
     public void OpenTreeNode_ForMissingTargetSendsOpenLinkRequest()
     {
         StaTestRunner.Run(() =>

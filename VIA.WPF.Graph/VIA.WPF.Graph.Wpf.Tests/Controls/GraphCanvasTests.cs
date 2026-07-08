@@ -77,6 +77,37 @@ public sealed class GraphCanvasTests
     }
 
     [Fact]
+    public void FocusedNodeId_SetFromBinding_CentersViewport()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphCanvas canvas = CreateArrangedCanvas();
+
+            canvas.FocusedNodeId = "main";
+
+            Assert.Equal("main", canvas.FocusedNodeId);
+            AssertClose(110d, canvas.PanX);
+            AssertClose(145d, canvas.PanY);
+        });
+    }
+
+    [Fact]
+    public void FocusedGroupId_SetFromBinding_FitsGroupBounds()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphCanvas canvas = CreateArrangedCanvas();
+
+            canvas.FocusedGroupId = "work";
+
+            Assert.Equal("work", canvas.FocusedGroupId);
+            AssertClose(3.8736842105263158d, canvas.Zoom);
+            AssertClose(-704d, canvas.PanX);
+            AssertClose(-300.42105263157896d, canvas.PanY);
+        });
+    }
+
+    [Fact]
     public void FocusFirstMatch_FocusesNodeGroupAndLinkById()
     {
         StaTestRunner.Run(() =>

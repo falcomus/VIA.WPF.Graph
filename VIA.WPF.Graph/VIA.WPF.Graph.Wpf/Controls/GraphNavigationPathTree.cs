@@ -45,6 +45,24 @@ public sealed class GraphNavigationPathTree : FrameworkElement
             null,
             FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty GraphSelectedNodeIdsProperty = DependencyProperty.Register(
+        nameof(GraphSelectedNodeIds),
+        typeof(IReadOnlyList<string>),
+        typeof(GraphNavigationPathTree),
+        new FrameworkPropertyMetadata(
+            Array.Empty<string>(),
+            FrameworkPropertyMetadataOptions.AffectsRender,
+            OnGraphSelectionChanged));
+
+    public static readonly DependencyProperty GraphSelectedLinkIdsProperty = DependencyProperty.Register(
+        nameof(GraphSelectedLinkIds),
+        typeof(IReadOnlyList<string>),
+        typeof(GraphNavigationPathTree),
+        new FrameworkPropertyMetadata(
+            Array.Empty<string>(),
+            FrameworkPropertyMetadataOptions.AffectsRender,
+            OnGraphSelectionChanged));
+
     public static readonly DependencyProperty GraphRequestCommandProperty = DependencyProperty.Register(
         nameof(GraphRequestCommand),
         typeof(ICommand),
@@ -104,6 +122,18 @@ public sealed class GraphNavigationPathTree : FrameworkElement
     {
         get => (string?)GetValue(SelectedLinkIdProperty);
         set => SetValue(SelectedLinkIdProperty, NormalizeOptionalText(value));
+    }
+
+    public IReadOnlyList<string> GraphSelectedNodeIds
+    {
+        get => (IReadOnlyList<string>?)GetValue(GraphSelectedNodeIdsProperty) ?? Array.Empty<string>();
+        set => SetValue(GraphSelectedNodeIdsProperty, CopySelection(value));
+    }
+
+    public IReadOnlyList<string> GraphSelectedLinkIds
+    {
+        get => (IReadOnlyList<string>?)GetValue(GraphSelectedLinkIdsProperty) ?? Array.Empty<string>();
+        set => SetValue(GraphSelectedLinkIdsProperty, CopySelection(value));
     }
 
     public ICommand? GraphRequestCommand
@@ -198,8 +228,15 @@ public sealed class GraphNavigationPathTree : FrameworkElement
     {
         GraphNavigationPathTree tree = (GraphNavigationPathTree)dependencyObject;
         tree.rows = BuildRows((GraphTreeProjection?)eventArgs.NewValue);
+        tree.ApplyGraphSelection();
         tree.InvalidateMeasure();
         tree.InvalidateVisual();
+    }
+
+    private static void OnGraphSelectionChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
+    {
+        GraphNavigationPathTree tree = (GraphNavigationPathTree)dependencyObject;
+        tree.ApplyGraphSelection();
     }
 
     private static IReadOnlyList<GraphNavigationTreeRow> BuildRows(GraphTreeProjection? projection)
@@ -336,6 +373,45 @@ public sealed class GraphNavigationPathTree : FrameworkElement
         InvalidateVisual();
     }
 
+    private void ApplyGraphSelection()
+    {
+        if (rows.Count == 0)
+        {
+            ClearSelection();
+            return;
+        }
+
+        foreach (string selectedLinkId in GraphSelectedLinkIds)
+        {
+            GraphNavigationTreeRow? linkRow = rows.FirstOrDefault(row =>
+                row.Node.LinkId is not null
+                && StringComparer.Ordinal.Equals(row.Node.LinkId, selectedLinkId));
+
+            if (linkRow is not null)
+            {
+                SetSelectedRow(linkRow);
+                return;
+            }
+        }
+
+        foreach (string selectedNodeId in GraphSelectedNodeIds)
+        {
+            GraphNavigationTreeRow? nodeRow = rows.FirstOrDefault(row =>
+                StringComparer.Ordinal.Equals(row.Node.NodeId, selectedNodeId));
+
+            if (nodeRow is not null)
+            {
+                SetSelectedRow(nodeRow);
+                return;
+            }
+        }
+
+        if (GraphSelectedLinkIds.Count == 0 && GraphSelectedNodeIds.Count == 0)
+        {
+            ClearSelection();
+        }
+    }
+
     private void ExecuteSelectionRequest(GraphTreeNode node)
     {
         if (node.Kind == GraphTreeNodeKind.MissingTarget && node.LinkId is not null)
@@ -401,6 +477,19 @@ public sealed class GraphNavigationPathTree : FrameworkElement
             GraphTreeNodeKind.MissingTarget => MissingTargetPen,
             _ => CardPen,
         };
+    }
+
+    private static IReadOnlyList<string> CopySelection(IEnumerable<string>? values)
+    {
+        if (values is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        return values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static string? NormalizeOptionalText(string? value)

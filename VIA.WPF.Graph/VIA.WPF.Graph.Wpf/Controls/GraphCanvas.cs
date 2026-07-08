@@ -544,6 +544,7 @@ public sealed class GraphCanvas : FrameworkElement
         canvas.UpdateLayoutBounds(layoutResult);
         canvas.RenderLayers(layoutResult);
         canvas.UpdateLayerTransform();
+        canvas.ApplyCurrentFocusToViewport();
         canvas.InvalidateMeasure();
         canvas.InvalidateVisual();
     }
@@ -574,6 +575,7 @@ public sealed class GraphCanvas : FrameworkElement
     {
         GraphCanvas canvas = (GraphCanvas)dependencyObject;
         canvas.RenderLayers(canvas.LayoutResult);
+        canvas.ApplyFocusChangeToViewport(eventArgs.Property, eventArgs.NewValue);
         canvas.InvalidateVisual();
     }
 
@@ -863,6 +865,56 @@ public sealed class GraphCanvas : FrameworkElement
         SetCurrentValue(SelectedGroupIdsProperty, Array.Empty<string>());
     }
 
+    private void ApplyFocusChangeToViewport(DependencyProperty property, object? newValue)
+    {
+        string? id = NormalizeOptionalText(newValue as string);
+        if (id is null || LayoutResult is not { Succeeded: true } || RenderSize.Width <= 0d || RenderSize.Height <= 0d)
+        {
+            return;
+        }
+
+        if (property == FocusedNodeIdProperty && TryGetNodeBounds(id, out GraphRect nodeBounds))
+        {
+            CenterOnBounds(nodeBounds);
+            return;
+        }
+
+        if (property == FocusedLinkIdProperty && TryGetLinkBounds(id, out GraphRect linkBounds))
+        {
+            CenterOnBounds(linkBounds);
+            return;
+        }
+
+        if (property == FocusedGroupIdProperty && TryGetGroupBounds(id, out GraphRect groupBounds))
+        {
+            FitToBounds(groupBounds, RenderSize, DefaultFitPadding);
+        }
+    }
+
+    private void ApplyCurrentFocusToViewport()
+    {
+        if (RenderSize.Width <= 0d || RenderSize.Height <= 0d || LayoutResult is not { Succeeded: true })
+        {
+            return;
+        }
+
+        if (FocusedNodeId is not null && TryGetNodeBounds(FocusedNodeId, out GraphRect nodeBounds))
+        {
+            CenterOnBounds(nodeBounds);
+            return;
+        }
+
+        if (FocusedLinkId is not null && TryGetLinkBounds(FocusedLinkId, out GraphRect linkBounds))
+        {
+            CenterOnBounds(linkBounds);
+            return;
+        }
+
+        if (FocusedGroupId is not null && TryGetGroupBounds(FocusedGroupId, out GraphRect groupBounds))
+        {
+            FitToBounds(groupBounds, RenderSize, DefaultFitPadding);
+        }
+    }
 
     private void ExecuteGraphRequest(GraphRequest request)
     {
