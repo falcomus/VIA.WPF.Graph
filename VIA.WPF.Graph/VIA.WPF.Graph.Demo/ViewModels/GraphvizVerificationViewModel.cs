@@ -14,7 +14,13 @@ public partial class GraphvizVerificationViewModel : ObservableObject
 {
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunLayoutCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RunLargeRebuildStressTestCommand))]
     private bool isLayoutRunning;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RunLayoutCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RunLargeRebuildStressTestCommand))]
+    private bool isStressTestRunning;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunLayoutCommand))]
@@ -76,7 +82,15 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     private string markerGroupStatusText = "No marker groups in the current testset.";
 
     [ObservableProperty]
+    private int stressTestRebuildCount = 25;
+
+    [ObservableProperty]
+    private string stressTestStatusText = "Large rebuild stress test not run yet.";
+
+    [ObservableProperty]
     private string technicalDetails = string.Empty;
+
+    private bool suppressAutomaticLayout;
 
     public GraphvizVerificationViewModel()
     {
@@ -113,7 +127,7 @@ public partial class GraphvizVerificationViewModel : ObservableObject
 
     partial void OnSelectedTestSetChanged(GraphDemoTestSet? value)
     {
-        if (value is not null)
+        if (!suppressAutomaticLayout && value is not null)
         {
             _ = RunLayoutCommand.ExecuteAsync(null);
         }
@@ -121,12 +135,22 @@ public partial class GraphvizVerificationViewModel : ObservableObject
 
     partial void OnSelectedDirectionChanged(GraphLayoutDirection value)
     {
-        _ = RunLayoutCommand.ExecuteAsync(null);
+        if (!suppressAutomaticLayout)
+        {
+            _ = RunLayoutCommand.ExecuteAsync(null);
+        }
     }
 
     private bool CanRunLayout()
     {
-        return !IsLayoutRunning && SelectedTestSet is not null;
+        return !IsLayoutRunning && !IsStressTestRunning && SelectedTestSet is not null;
+    }
+
+    private bool CanRunLargeRebuildStressTest()
+    {
+        return !IsLayoutRunning
+            && !IsStressTestRunning
+            && TestSets.Any(testSet => string.Equals(testSet.Name, "Large", StringComparison.Ordinal));
     }
 
     [RelayCommand(CanExecute = nameof(CanRunLayout))]
@@ -281,6 +305,146 @@ public partial class GraphvizVerificationViewModel : ObservableObject
         RequestFit();
     }
 
+
+    [RelayCommand(CanExecute = nameof(CanRunLargeRebuildStressTest))]
+    private async Task RunLargeRebuildStressTestAsync()
+    {
+        GraphDemoTestSet? largeTestSet = TestSets.FirstOrDefault(testSet => string.Equals(testSet.Name, "Large", StringComparison.Ordinal));
+        if (largeTestSet is null)
+        {
+            ResultText = "Large stress test cannot run because the Large testset is missing.";
+            StressTestStatusText = "Large testset missing.";
+            return;
+        }
+
+        int requestedRebuildCount = Math.Clamp(StressTestRebuildCount, 1, 200);
+        List<(int Iteration, GraphLayoutDirection Direction, GraphViewMode ViewMode, double LayoutMilliseconds, bool Succeeded, int ValidationIssueCount, long MemoryBytes)> samples = [];
+        string? failureMessage = null;
+        string? selectedStressMarkerGroupId = null;
+
+        try
+        {
+            IsStressTestRunning = true;
+            ResultText = $"Large: {requestedRebuildCount} rebuilds are running ...";
+            StressTestStatusText = "Running Large rebuild stress test ...";
+            TechnicalDetails = string.Empty;
+            IsFreeNavigationEnabled = false;
+            Zoom = 1d;
+            PanX = 0d;
+            PanY = 0d;
+
+            suppressAutomaticLayout = true;
+            SelectedTestSet = largeTestSet;
+            suppressAutomaticLayout = false;
+
+            UpdateMarkerGroups(largeTestSet.Document);
+            selectedStressMarkerGroupId = MarkerGroupIds.FirstOrDefault(groupId => string.Equals(groupId, "critical", StringComparison.Ordinal))
+                ?? MarkerGroupIds.FirstOrDefault();
+            SelectedMarkerGroupId = selectedStressMarkerGroupId;
+            SelectedGroupIds = selectedStressMarkerGroupId is null ? Array.Empty<string>() : [selectedStressMarkerGroupId];
+            IsMarkerGroupFilterEnabled = selectedStressMarkerGroupId is not null;
+            FocusedGroupId = null;
+            MarkerGroupStatusText = selectedStressMarkerGroupId is null
+                ? "Large has no marker group available for rebuild selection preservation."
+                : $"Marker group '{selectedStressMarkerGroupId}' is selected during rebuild stress test.";
+
+            long memoryBeforeBytes = GC.GetTotalMemory(forceFullCollection: true);
+            Stopwatch totalStopwatch = Stopwatch.StartNew();
+
+            for (int iteration = 1; iteration <= requestedRebuildCount; iteration++)
+            {
+                GraphLayoutDirection direction = iteration % 2 == 0
+                    ? GraphLayoutDirection.TopToBottom
+                    : GraphLayoutDirection.LeftToRight;
+                GraphViewMode viewMode = iteration % 3 == 0
+                    ? GraphViewMode.GroupOverview
+                    : GraphViewMode.Overview;
+
+                suppressAutomaticLayout = true;
+                SelectedDirection = direction;
+                suppressAutomaticLayout = false;
+
+                GraphDocument rebuildDocument = largeTestSet.Document;
+                GraphValidationResult validation = GraphDocumentValidator.Validate(rebuildDocument);
+                GraphLayoutOptions options = new(direction, GraphEdgeRoutingStyle.Spline);
+
+                Stopwatch layoutStopwatch = Stopwatch.StartNew();
+                GraphLayoutResult layoutResult = await Task.Run(() => GraphvizLayoutEngine.Layout(rebuildDocument, options));
+                layoutStopwatch.Stop();
+
+                CurrentDocument = rebuildDocument;
+                CurrentLayout = null;
+                ActiveViewMode = viewMode;
+                VisualDensity = largeTestSet.DefaultVisualDensity;
+                CurrentLayout = layoutResult;
+                RequestFit();
+
+                long memoryBytes = GC.GetTotalMemory(forceFullCollection: false);
+                samples.Add((
+                    iteration,
+                    direction,
+                    viewMode,
+                    layoutStopwatch.Elapsed.TotalMilliseconds,
+                    layoutResult.Succeeded,
+                    validation.Issues.Count,
+                    memoryBytes));
+
+                StressTestStatusText = $"Large rebuild {iteration}/{requestedRebuildCount}: {layoutStopwatch.ElapsedMilliseconds} ms, {direction}, {viewMode}.";
+
+                if (!layoutResult.Succeeded)
+                {
+                    failureMessage = layoutResult.Error?.Message ?? "Layout returned an unsuccessful result.";
+                    break;
+                }
+
+                if (!validation.IsValid)
+                {
+                    failureMessage = "Large rebuild produced validation errors.";
+                    break;
+                }
+
+                if (!IsMarkerSelectionPreserved(selectedStressMarkerGroupId))
+                {
+                    failureMessage = "Marker group selection was not preserved during rebuild.";
+                    break;
+                }
+
+                await Task.Delay(1);
+            }
+
+            totalStopwatch.Stop();
+            long memoryAfterBytes = GC.GetTotalMemory(forceFullCollection: true);
+            TechnicalDetails = CreateStressTechnicalDetails(
+                largeTestSet,
+                samples,
+                totalStopwatch.Elapsed,
+                memoryBeforeBytes,
+                memoryAfterBytes,
+                selectedStressMarkerGroupId,
+                failureMessage);
+
+            bool succeeded = failureMessage is null && samples.Count == requestedRebuildCount;
+            ResultText = succeeded
+                ? $"Large stress passed: {samples.Count} rebuilds, 0 failures, avg {samples.Average(sample => sample.LayoutMilliseconds):0.0} ms."
+                : $"Large stress failed after {samples.Count} rebuilds: {failureMessage}";
+            StressTestStatusText = succeeded
+                ? $"Passed: {samples.Count} Large rebuilds completed without layout, validation or selection failure."
+                : $"Failed: {failureMessage}";
+        }
+        catch (Exception exception)
+        {
+            CurrentLayout = null;
+            ResultText = "Large stress test failed with an exception.";
+            StressTestStatusText = exception.Message;
+            TechnicalDetails = exception.ToString();
+        }
+        finally
+        {
+            suppressAutomaticLayout = false;
+            IsStressTestRunning = false;
+        }
+    }
+
     [RelayCommand]
     private void SetCompactDensity()
     {
@@ -313,6 +477,76 @@ public partial class GraphvizVerificationViewModel : ObservableObject
         MarkerGroupStatusText = MarkerGroupIds.Count == 0
             ? "No marker groups in the current testset."
             : $"{MarkerGroupIds.Count} marker groups available.";
+    }
+
+
+
+    private bool IsMarkerSelectionPreserved(string? markerGroupId)
+    {
+        return markerGroupId is null
+            || (SelectedGroupIds.Contains(markerGroupId, StringComparer.Ordinal)
+                && CurrentDocument?.Groups.Any(group => group.Kind == GraphGroupKind.Marker && string.Equals(group.Id, markerGroupId, StringComparison.Ordinal)) == true);
+    }
+
+    private static string CreateStressTechnicalDetails(
+        GraphDemoTestSet testSet,
+        IReadOnlyList<(int Iteration, GraphLayoutDirection Direction, GraphViewMode ViewMode, double LayoutMilliseconds, bool Succeeded, int ValidationIssueCount, long MemoryBytes)> samples,
+        TimeSpan totalElapsed,
+        long memoryBeforeBytes,
+        long memoryAfterBytes,
+        string? selectedMarkerGroupId,
+        string? failureMessage)
+    {
+        List<string> lines =
+        [
+            "P5-004 Large rebuild stress acceptance",
+            string.Empty,
+            $"Testset: {testSet.Name}",
+            testSet.Description,
+            $"Nodes: {testSet.NodeCount}",
+            $"Links: {testSet.LinkCount}",
+            $"Groups: {testSet.GroupCount}",
+            $"Rebuilds executed: {samples.Count}",
+            $"Failures: {(failureMessage is null ? 0 : 1)}",
+            $"Total elapsed: {totalElapsed.TotalMilliseconds:0.0} ms",
+            $"Memory before full GC: {FormatBytes(memoryBeforeBytes)}",
+            $"Memory after full GC: {FormatBytes(memoryAfterBytes)}",
+            $"Memory delta after full GC: {FormatBytes(memoryAfterBytes - memoryBeforeBytes)}",
+            $"Marker selection preserved: {(failureMessage == "Marker group selection was not preserved during rebuild." ? "no" : "yes")}",
+            $"Selected marker group: {selectedMarkerGroupId ?? "none"}"
+        ];
+
+        if (samples.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"Layout min: {samples.Min(sample => sample.LayoutMilliseconds):0.0} ms");
+            lines.Add($"Layout avg: {samples.Average(sample => sample.LayoutMilliseconds):0.0} ms");
+            lines.Add($"Layout max: {samples.Max(sample => sample.LayoutMilliseconds):0.0} ms");
+            lines.Add($"LeftToRight runs: {samples.Count(sample => sample.Direction == GraphLayoutDirection.LeftToRight)}");
+            lines.Add($"TopToBottom runs: {samples.Count(sample => sample.Direction == GraphLayoutDirection.TopToBottom)}");
+        }
+
+        if (failureMessage is not null)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Failure:");
+            lines.Add(failureMessage);
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("Samples:");
+        foreach ((int iteration, GraphLayoutDirection direction, GraphViewMode viewMode, double layoutMilliseconds, bool succeeded, int validationIssueCount, long memoryBytes) in samples)
+        {
+            lines.Add($"- #{iteration:00}: {layoutMilliseconds,7:0.0} ms | {direction,-12} | {viewMode,-13} | success={succeeded} | validation issues={validationIssueCount} | memory={FormatBytes(memoryBytes)}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        double megabytes = bytes / 1024d / 1024d;
+        return $"{megabytes:0.00} MB";
     }
 
     private static string CreateTechnicalDetails(

@@ -63,6 +63,21 @@
             <Separator Margin="0,14,0,14" />
 
             <TextBlock FontWeight="SemiBold"
+                       Text="Belastungsabnahme" />
+            <Button Margin="0,8,0,0"
+                    Padding="12,7"
+                    Command="{Binding RunLargeRebuildStressTestCommand}"
+                    Content="Large-Rebuildtest starten" />
+            <TextBlock Margin="0,8,0,0"
+                       Text="{Binding StressTestRebuildCount, StringFormat=Rebuilds: {0}}"
+                       FontWeight="SemiBold" />
+            <TextBlock Margin="0,4,0,0"
+                       Text="{Binding StressTestStatusText}"
+                       TextWrapping="Wrap" />
+
+            <Separator Margin="0,14,0,14" />
+
+            <TextBlock FontWeight="SemiBold"
                        Text="Ansicht" />
             <Button Margin="0,8,0,0"
                     Padding="12,7"
