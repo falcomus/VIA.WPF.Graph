@@ -36,6 +36,7 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     private double visualDensity = 1d;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ZoomText))]
     private double zoom = 1d;
 
     [ObservableProperty]
@@ -43,6 +44,16 @@ public partial class GraphvizVerificationViewModel : ObservableObject
 
     [ObservableProperty]
     private double panY;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NavigationModeText))]
+    private bool isFreeNavigationEnabled;
+
+    [ObservableProperty]
+    private int fitRequestVersion;
+
+    [ObservableProperty]
+    private int centerRequestVersion;
 
     [ObservableProperty]
     private string resultText = "Phase 5 testsets are ready.";
@@ -74,6 +85,12 @@ public partial class GraphvizVerificationViewModel : ObservableObject
         GraphViewMode.Focus,
         GraphViewMode.Diagnostic
     ];
+
+    public string NavigationModeText => IsFreeNavigationEnabled
+        ? "Free Pan/Zoom: mouse wheel zooms, right or middle mouse button pans. Fit is not reapplied automatically."
+        : "Fit mode: layout changes, view changes and window resizing keep the graph fitted to the visible area.";
+
+    public string ZoomText => $"Zoom: {Zoom:P0}";
 
     partial void OnSelectedTestSetChanged(GraphDemoTestSet? value)
     {
@@ -110,6 +127,7 @@ public partial class GraphvizVerificationViewModel : ObservableObject
             CurrentLayout = null;
             ActiveViewMode = testSet.DefaultViewMode;
             VisualDensity = testSet.DefaultVisualDensity;
+            IsFreeNavigationEnabled = false;
             Zoom = 1d;
             PanX = 0d;
             PanY = 0d;
@@ -121,6 +139,7 @@ public partial class GraphvizVerificationViewModel : ObservableObject
             stopwatch.Stop();
 
             CurrentLayout = layoutResult;
+            RequestFit();
             TechnicalDetails = CreateTechnicalDetails(testSet, validation, layoutResult, stopwatch.Elapsed);
             ResultText = layoutResult.Succeeded
                 ? $"{testSet.Name}: {testSet.NodeCount} nodes, {testSet.LinkCount} links, {testSet.GroupCount} groups laid out in {stopwatch.ElapsedMilliseconds} ms."
@@ -142,12 +161,52 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     private void ShowAreaOverview()
     {
         ActiveViewMode = GraphViewMode.GroupOverview;
+        IsFreeNavigationEnabled = false;
+        RequestFit();
     }
 
     [RelayCommand]
     private void ShowFullGraph()
     {
         ActiveViewMode = GraphViewMode.Overview;
+        IsFreeNavigationEnabled = false;
+        RequestFit();
+    }
+
+    [RelayCommand]
+    private void UseFitMode()
+    {
+        IsFreeNavigationEnabled = false;
+        RequestFit();
+    }
+
+    [RelayCommand]
+    private void UseFreePanZoomMode()
+    {
+        IsFreeNavigationEnabled = true;
+    }
+
+    [RelayCommand]
+    private void FitToGraph()
+    {
+        IsFreeNavigationEnabled = false;
+        RequestFit();
+    }
+
+    [RelayCommand]
+    private void SetActualSize()
+    {
+        IsFreeNavigationEnabled = true;
+        Zoom = 1d;
+        PanX = 0d;
+        PanY = 0d;
+    }
+
+    [RelayCommand]
+    private void CenterGraph()
+    {
+        IsFreeNavigationEnabled = true;
+        CenterRequestVersion++;
     }
 
     [RelayCommand]
@@ -160,6 +219,11 @@ public partial class GraphvizVerificationViewModel : ObservableObject
     private void SetNormalDensity()
     {
         VisualDensity = 1d;
+    }
+
+    private void RequestFit()
+    {
+        FitRequestVersion++;
     }
 
     private static string CreateTechnicalDetails(
@@ -191,6 +255,7 @@ public partial class GraphvizVerificationViewModel : ObservableObject
             $"Back links: {backLinkCount}",
             $"External links: {externalLinkCount}",
             string.Empty,
+            $"Navigation: {(layoutResult.Succeeded ? "fit mode by default; free pan/zoom is optional" : "not available")}",
             $"Validation: {(validation.IsValid ? "valid" : "invalid")}",
             $"Validation issues: {validation.Issues.Count}",
             $"Layout succeeded: {layoutResult.Succeeded}",

@@ -31,7 +31,7 @@
 
     <Grid Grid.Row="2">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="320" />
+        <ColumnDefinition Width="340" />
         <ColumnDefinition Width="14" />
         <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
@@ -72,6 +72,47 @@
                     Padding="12,7"
                     Command="{Binding ShowFullGraphCommand}"
                     Content="Gesamtgraph" />
+
+            <Separator Margin="0,14,0,14" />
+
+            <TextBlock FontWeight="SemiBold"
+                       Text="Navigation" />
+            <UniformGrid Margin="0,8,0,0"
+                         Columns="2">
+              <Button Margin="0,0,4,0"
+                      Padding="10,7"
+                      Command="{Binding UseFitModeCommand}"
+                      Content="Fit-Modus" />
+              <Button Margin="4,0,0,0"
+                      Padding="10,7"
+                      Command="{Binding UseFreePanZoomModeCommand}"
+                      Content="Frei bewegen" />
+            </UniformGrid>
+            <UniformGrid Margin="0,8,0,0"
+                         Columns="3">
+              <Button Margin="0,0,4,0"
+                      Padding="10,7"
+                      Command="{Binding FitToGraphCommand}"
+                      Content="Fit" />
+              <Button Margin="4,0,4,0"
+                      Padding="10,7"
+                      Command="{Binding SetActualSizeCommand}"
+                      Content="100 %" />
+              <Button Margin="4,0,0,0"
+                      Padding="10,7"
+                      Command="{Binding CenterGraphCommand}"
+                      Content="Zentrieren" />
+            </UniformGrid>
+            <TextBlock Margin="0,8,0,0"
+                       Text="{Binding ZoomText}"
+                       FontWeight="SemiBold" />
+            <TextBlock Margin="0,4,0,0"
+                       Text="{Binding NavigationModeText}"
+                       TextWrapping="Wrap" />
+            <TextBlock Margin="0,6,0,0"
+                       Foreground="#FF52616D"
+                       Text="Mausrad zoomt. Rechte oder mittlere Maustaste ziehen verschiebt den Graph."
+                       TextWrapping="Wrap" />
 
             <Separator Margin="0,14,0,14" />
 
