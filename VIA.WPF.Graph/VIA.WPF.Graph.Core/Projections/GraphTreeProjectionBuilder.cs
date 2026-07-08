@@ -34,10 +34,15 @@ public static class GraphTreeProjectionBuilder
             recursiveLinkKinds ?? DefaultRecursiveLinkKinds);
 
         List<GraphTreeNode> roots = [];
-        HashSet<string> expandedNodeIds = new(StringComparer.Ordinal);
+        HashSet<string> visitedNodeIds = new(StringComparer.Ordinal);
 
         foreach (string resolvedRootNodeId in ResolveRootNodeIds(document, nodeById, recursiveKinds, rootNodeId))
         {
+            if (visitedNodeIds.Contains(resolvedRootNodeId))
+            {
+                continue;
+            }
+
             if (!nodeById.TryGetValue(resolvedRootNodeId, out GraphNode? rootNode))
             {
                 continue;
@@ -53,14 +58,14 @@ public static class GraphTreeProjectionBuilder
                 outgoingLinksBySourceId,
                 recursiveKinds,
                 ancestorNodeIds: [],
-                expandedNodeIds));
+                visitedNodeIds));
         }
 
         if (includeUnreachableComponents)
         {
             foreach (GraphNode node in document.Nodes)
             {
-                if (expandedNodeIds.Contains(node.Id))
+                if (visitedNodeIds.Contains(node.Id))
                 {
                     continue;
                 }
@@ -75,7 +80,7 @@ public static class GraphTreeProjectionBuilder
                     outgoingLinksBySourceId,
                     recursiveKinds,
                     ancestorNodeIds: [],
-                    expandedNodeIds));
+                    visitedNodeIds));
             }
         }
 
@@ -92,14 +97,14 @@ public static class GraphTreeProjectionBuilder
         IReadOnlyDictionary<string, GraphLink[]> outgoingLinksBySourceId,
         IReadOnlySet<GraphLinkKind> recursiveLinkKinds,
         HashSet<string> ancestorNodeIds,
-        HashSet<string> expandedNodeIds)
+        HashSet<string> visitedNodeIds)
     {
         HashSet<string> nextAncestorNodeIds = new(ancestorNodeIds, StringComparer.Ordinal)
         {
             node.Id
         };
 
-        expandedNodeIds.Add(node.Id);
+        visitedNodeIds.Add(node.Id);
 
         IReadOnlyList<GraphTreeNode> children = BuildChildren(
             node,
@@ -108,7 +113,7 @@ public static class GraphTreeProjectionBuilder
             outgoingLinksBySourceId,
             recursiveLinkKinds,
             nextAncestorNodeIds,
-            expandedNodeIds);
+            visitedNodeIds);
 
         return new GraphTreeNode(
             treeNodeId,
@@ -127,7 +132,7 @@ public static class GraphTreeProjectionBuilder
         IReadOnlyDictionary<string, GraphLink[]> outgoingLinksBySourceId,
         IReadOnlySet<GraphLinkKind> recursiveLinkKinds,
         HashSet<string> ancestorNodeIds,
-        HashSet<string> expandedNodeIds)
+        HashSet<string> visitedNodeIds)
     {
         if (!outgoingLinksBySourceId.TryGetValue(node.Id, out GraphLink[]? outgoingLinks))
         {
@@ -154,6 +159,7 @@ public static class GraphTreeProjectionBuilder
 
             if (link.Kind == GraphLinkKind.External || targetNode.Kind == GraphNodeKind.External)
             {
+                visitedNodeIds.Add(targetNode.Id);
                 children.Add(new GraphTreeNode(
                     childTreeNodeId,
                     targetNode.Id,
@@ -166,8 +172,9 @@ public static class GraphTreeProjectionBuilder
 
             if (!recursiveLinkKinds.Contains(link.Kind)
                 || ancestorNodeIds.Contains(targetNode.Id)
-                || expandedNodeIds.Contains(targetNode.Id))
+                || visitedNodeIds.Contains(targetNode.Id))
             {
+                visitedNodeIds.Add(targetNode.Id);
                 children.Add(new GraphTreeNode(
                     childTreeNodeId,
                     targetNode.Id,
@@ -188,7 +195,7 @@ public static class GraphTreeProjectionBuilder
                 outgoingLinksBySourceId,
                 recursiveLinkKinds,
                 ancestorNodeIds,
-                expandedNodeIds));
+                visitedNodeIds));
         }
 
         return children;

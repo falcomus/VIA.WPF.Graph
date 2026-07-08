@@ -3,4 +3,5 @@
   <Project Path="VIA.WPF.Graph.Graphviz/VIA.WPF.Graph.Graphviz.csproj" />
   <Project Path="VIA.WPF.Graph.Wpf/VIA.WPF.Graph.Wpf.csproj" />
   <Project Path="VIA.WPF.Graph.Demo/VIA.WPF.Graph.Demo.csproj" />
+  <Project Path="VIA.WPF.Graph.Core.Tests/VIA.WPF.Graph.Core.Tests.csproj" />
 </Solution>
