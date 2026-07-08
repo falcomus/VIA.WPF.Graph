@@ -100,6 +100,42 @@ public sealed class GraphCanvas : FrameworkElement
             FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
             OnSelectionPropertyChanged));
 
+    public static readonly DependencyProperty FocusedNodeIdProperty = DependencyProperty.Register(
+        nameof(FocusedNodeId),
+        typeof(string),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            null,
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnFocusPropertyChanged));
+
+    public static readonly DependencyProperty FocusedLinkIdProperty = DependencyProperty.Register(
+        nameof(FocusedLinkId),
+        typeof(string),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            null,
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnFocusPropertyChanged));
+
+    public static readonly DependencyProperty FocusedGroupIdProperty = DependencyProperty.Register(
+        nameof(FocusedGroupId),
+        typeof(string),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            null,
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnFocusPropertyChanged));
+
+    public static readonly DependencyProperty SearchTextProperty = DependencyProperty.Register(
+        nameof(SearchText),
+        typeof(string),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(
+            string.Empty,
+            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnFocusPropertyChanged));
+
     private const double DefaultTextSize = 12d;
     private const double NodeCornerRadius = 5d;
     private const double ArrowLength = 10d;
@@ -107,6 +143,7 @@ public sealed class GraphCanvas : FrameworkElement
     private const double ZoomWheelFactor = 1.1d;
     private const double DefaultFitPadding = 32d;
     private const double EdgeHitTolerance = 6d;
+    private const double FocusDimOpacity = 0.22d;
 
     private static readonly Brush BackgroundBrush = CreateFrozenBrush(Color.FromRgb(248, 248, 248));
     private static readonly Brush GroupFillBrush = CreateFrozenBrush(Color.FromArgb(20, 96, 125, 139));
@@ -197,6 +234,30 @@ public sealed class GraphCanvas : FrameworkElement
         set => SetValue(SelectedGroupIdsProperty, CopySelection(value));
     }
 
+    public string? FocusedNodeId
+    {
+        get => (string?)GetValue(FocusedNodeIdProperty);
+        set => SetValue(FocusedNodeIdProperty, NormalizeOptionalText(value));
+    }
+
+    public string? FocusedLinkId
+    {
+        get => (string?)GetValue(FocusedLinkIdProperty);
+        set => SetValue(FocusedLinkIdProperty, NormalizeOptionalText(value));
+    }
+
+    public string? FocusedGroupId
+    {
+        get => (string?)GetValue(FocusedGroupIdProperty);
+        set => SetValue(FocusedGroupIdProperty, NormalizeOptionalText(value));
+    }
+
+    public string SearchText
+    {
+        get => (string?)GetValue(SearchTextProperty) ?? string.Empty;
+        set => SetValue(SearchTextProperty, value ?? string.Empty);
+    }
+
     protected override int VisualChildrenCount => 3;
 
     protected override Visual GetVisualChild(int index)
@@ -239,6 +300,95 @@ public sealed class GraphCanvas : FrameworkElement
         SetCurrentValue(ZoomProperty, fittedZoom);
         SetCurrentValue(PanXProperty, panX);
         SetCurrentValue(PanYProperty, panY);
+    }
+
+    public bool FocusNode(string nodeId)
+    {
+        string? normalizedNodeId = NormalizeOptionalText(nodeId);
+        if (normalizedNodeId is null || !TryGetNodeBounds(normalizedNodeId, out GraphRect bounds))
+        {
+            return false;
+        }
+
+        SetCurrentValue(FocusedNodeIdProperty, normalizedNodeId);
+        SetCurrentValue(FocusedLinkIdProperty, null);
+        SetCurrentValue(FocusedGroupIdProperty, null);
+        CenterOnBounds(bounds);
+        return true;
+    }
+
+    public bool FocusLink(string linkId)
+    {
+        string? normalizedLinkId = NormalizeOptionalText(linkId);
+        if (normalizedLinkId is null || !TryGetLinkBounds(normalizedLinkId, out GraphRect bounds))
+        {
+            return false;
+        }
+
+        SetCurrentValue(FocusedNodeIdProperty, null);
+        SetCurrentValue(FocusedLinkIdProperty, normalizedLinkId);
+        SetCurrentValue(FocusedGroupIdProperty, null);
+        CenterOnBounds(bounds);
+        return true;
+    }
+
+    public bool FocusGroup(string groupId)
+    {
+        string? normalizedGroupId = NormalizeOptionalText(groupId);
+        if (normalizedGroupId is null || !TryGetGroupBounds(normalizedGroupId, out GraphRect bounds))
+        {
+            return false;
+        }
+
+        SetCurrentValue(FocusedNodeIdProperty, null);
+        SetCurrentValue(FocusedLinkIdProperty, null);
+        SetCurrentValue(FocusedGroupIdProperty, normalizedGroupId);
+        FitToBounds(bounds, RenderSize, DefaultFitPadding);
+        return true;
+    }
+
+    public bool DrillDownToGroup(string groupId)
+    {
+        return FocusGroup(groupId);
+    }
+
+    public bool FocusFirstMatch(string searchText)
+    {
+        string normalizedSearchText = searchText ?? string.Empty;
+        SetCurrentValue(SearchTextProperty, normalizedSearchText);
+
+        if (string.IsNullOrWhiteSpace(normalizedSearchText) || LayoutResult is not { Succeeded: true } layoutResult)
+        {
+            return false;
+        }
+
+        GraphLayoutNode? node = layoutResult.Nodes.FirstOrDefault(item => ContainsText(item.NodeId, normalizedSearchText));
+        if (node is not null)
+        {
+            return FocusNode(node.NodeId);
+        }
+
+        GraphLayoutGroup? group = layoutResult.Groups.FirstOrDefault(item => ContainsText(item.GroupId, normalizedSearchText));
+        if (group is not null)
+        {
+            return FocusGroup(group.GroupId);
+        }
+
+        GraphLayoutEdge? edge = layoutResult.Edges.FirstOrDefault(item => ContainsText(item.LinkId, normalizedSearchText));
+        return edge is not null && FocusLink(edge.LinkId);
+    }
+
+    public void ReturnToOverview()
+    {
+        SetCurrentValue(FocusedNodeIdProperty, null);
+        SetCurrentValue(FocusedLinkIdProperty, null);
+        SetCurrentValue(FocusedGroupIdProperty, null);
+        SetCurrentValue(SearchTextProperty, string.Empty);
+
+        if (RenderSize.Width > 0d && RenderSize.Height > 0d)
+        {
+            FitToGraph();
+        }
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -305,9 +455,17 @@ public sealed class GraphCanvas : FrameworkElement
         }
 
         Focus();
+        GraphCanvasHit? hit = HitTestGraph(e.GetPosition(this));
+        if (e.ClickCount > 1)
+        {
+            ApplyHitFocus(hit);
+            e.Handled = true;
+            return;
+        }
+
         bool isMultiSelection = Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
             || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-        ApplyHitSelection(HitTestGraph(e.GetPosition(this)), isMultiSelection);
+        ApplyHitSelection(hit, isMultiSelection);
         e.Handled = true;
     }
 
@@ -348,6 +506,20 @@ public sealed class GraphCanvas : FrameworkElement
         EndPan();
     }
 
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+
+        if (e.Key != Key.Escape)
+        {
+            return;
+        }
+
+        ReturnToOverview();
+        e.Handled = true;
+    }
+
     private static void OnLayoutResultChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
     {
         GraphCanvas canvas = (GraphCanvas)dependencyObject;
@@ -375,6 +547,14 @@ public sealed class GraphCanvas : FrameworkElement
     }
 
     private static void OnSelectionPropertyChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
+    {
+        GraphCanvas canvas = (GraphCanvas)dependencyObject;
+        canvas.RenderLayers(canvas.LayoutResult);
+        canvas.InvalidateVisual();
+    }
+
+
+    private static void OnFocusPropertyChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
     {
         GraphCanvas canvas = (GraphCanvas)dependencyObject;
         canvas.RenderLayers(canvas.LayoutResult);
@@ -418,30 +598,41 @@ public sealed class GraphCanvas : FrameworkElement
         HashSet<string> selectedGroupIds = ToSelectionSet(SelectedGroupIds);
         HashSet<string> selectedLinkIds = ToSelectionSet(SelectedLinkIds);
         HashSet<string> selectedNodeIds = ToSelectionSet(SelectedNodeIds);
+        GraphCanvasFocusContext focusContext = new(FocusedNodeId, FocusedLinkId, FocusedGroupId, SearchText);
 
-        groupLayer.Render(drawingContext => DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds));
-        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges, selectedLinkIds));
-        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes, selectedNodeIds));
+        groupLayer.Render(drawingContext => DrawGroups(drawingContext, layoutResult.Groups, selectedGroupIds, focusContext));
+        edgeLayer.Render(drawingContext => DrawEdges(drawingContext, layoutResult.Edges, selectedLinkIds, focusContext));
+        nodeLayer.Render(drawingContext => DrawNodes(drawingContext, layoutResult.Nodes, selectedNodeIds, focusContext));
     }
 
     private void DrawGroups(
         DrawingContext drawingContext,
         IReadOnlyList<GraphLayoutGroup> groups,
-        IReadOnlySet<string> selectedGroupIds)
+        IReadOnlySet<string> selectedGroupIds,
+        GraphCanvasFocusContext focusContext)
     {
         foreach (GraphLayoutGroup group in groups)
         {
             bool isSelected = selectedGroupIds.Contains(group.GroupId);
+            bool isFocused = StringComparer.Ordinal.Equals(focusContext.GroupId, group.GroupId);
+            bool isSearchMatch = focusContext.MatchesSearch(group.GroupId);
+            bool isHighlighted = isSelected || isFocused || isSearchMatch;
+            bool isDimmed = focusContext.IsActive && !isHighlighted;
             Rect rect = ToRect(group.Bounds);
-            drawingContext.DrawRectangle(isSelected ? SelectedGroupFillBrush : GroupFillBrush, isSelected ? SelectedGroupPen : GroupPen, rect);
-            DrawText(drawingContext, group.GroupId, rect, isSelected ? SelectionBrush : TextBrush, TextAlignment.Left, 8d, 4d);
+
+            DrawWithOptionalOpacity(drawingContext, isDimmed, () =>
+            {
+                drawingContext.DrawRectangle(isHighlighted ? SelectedGroupFillBrush : GroupFillBrush, isHighlighted ? SelectedGroupPen : GroupPen, rect);
+                DrawText(drawingContext, group.GroupId, rect, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Left, 8d, 4d);
+            });
         }
     }
 
     private void DrawEdges(
         DrawingContext drawingContext,
         IReadOnlyList<GraphLayoutEdge> edges,
-        IReadOnlySet<string> selectedLinkIds)
+        IReadOnlySet<string> selectedLinkIds,
+        GraphCanvasFocusContext focusContext)
     {
         foreach (GraphLayoutEdge edge in edges)
         {
@@ -451,29 +642,46 @@ public sealed class GraphCanvas : FrameworkElement
             }
 
             bool isSelected = selectedLinkIds.Contains(edge.LinkId);
-            Pen pen = isSelected ? SelectedEdgePen : edge.UsesFallbackGeometry ? FallbackEdgePen : EdgePen;
-            StreamGeometry lineGeometry = CreatePolylineGeometry(edge.Points);
-            drawingContext.DrawGeometry(null, pen, lineGeometry);
+            bool isFocused = StringComparer.Ordinal.Equals(focusContext.LinkId, edge.LinkId);
+            bool isSearchMatch = focusContext.MatchesSearch(edge.LinkId);
+            bool isHighlighted = isSelected || isFocused || isSearchMatch;
+            bool isDimmed = focusContext.IsActive && !isHighlighted;
+            Pen pen = isHighlighted ? SelectedEdgePen : edge.UsesFallbackGeometry ? FallbackEdgePen : EdgePen;
 
-            StreamGeometry? arrowGeometry = CreateArrowHeadGeometry(edge.Points);
-            if (arrowGeometry is not null)
+            DrawWithOptionalOpacity(drawingContext, isDimmed, () =>
             {
-                drawingContext.DrawGeometry(pen.Brush, null, arrowGeometry);
-            }
+                StreamGeometry lineGeometry = CreatePolylineGeometry(edge.Points);
+                drawingContext.DrawGeometry(null, pen, lineGeometry);
+
+                StreamGeometry? arrowGeometry = CreateArrowHeadGeometry(edge.Points);
+                if (arrowGeometry is not null)
+                {
+                    drawingContext.DrawGeometry(pen.Brush, null, arrowGeometry);
+                }
+            });
         }
     }
 
     private void DrawNodes(
         DrawingContext drawingContext,
         IReadOnlyList<GraphLayoutNode> nodes,
-        IReadOnlySet<string> selectedNodeIds)
+        IReadOnlySet<string> selectedNodeIds,
+        GraphCanvasFocusContext focusContext)
     {
         foreach (GraphLayoutNode node in nodes)
         {
             bool isSelected = selectedNodeIds.Contains(node.NodeId);
+            bool isFocused = StringComparer.Ordinal.Equals(focusContext.NodeId, node.NodeId);
+            bool isSearchMatch = focusContext.MatchesSearch(node.NodeId);
+            bool isHighlighted = isSelected || isFocused || isSearchMatch;
+            bool isDimmed = focusContext.IsActive && !isHighlighted;
             Rect rect = ToRect(node.Bounds);
-            drawingContext.DrawRoundedRectangle(NodeFillBrush, isSelected ? SelectedNodePen : NodePen, rect, NodeCornerRadius, NodeCornerRadius);
-            DrawText(drawingContext, node.NodeId, rect, isSelected ? SelectionBrush : TextBrush, TextAlignment.Center, 6d, 0d);
+
+            DrawWithOptionalOpacity(drawingContext, isDimmed, () =>
+            {
+                drawingContext.DrawRoundedRectangle(NodeFillBrush, isHighlighted ? SelectedNodePen : NodePen, rect, NodeCornerRadius, NodeCornerRadius);
+                DrawText(drawingContext, node.NodeId, rect, isHighlighted ? SelectionBrush : TextBrush, TextAlignment.Center, 6d, 0d);
+            });
         }
     }
 
@@ -600,6 +808,30 @@ public sealed class GraphCanvas : FrameworkElement
         }
     }
 
+    private void ApplyHitFocus(GraphCanvasHit? hit)
+    {
+        if (hit is null)
+        {
+            ReturnToOverview();
+            return;
+        }
+
+        switch (hit.Kind)
+        {
+            case GraphCanvasHitKind.Node:
+                _ = FocusNode(hit.Id);
+                break;
+            case GraphCanvasHitKind.Link:
+                _ = FocusLink(hit.Id);
+                break;
+            case GraphCanvasHitKind.Group:
+                _ = DrillDownToGroup(hit.Id);
+                break;
+            default:
+                throw new InvalidOperationException($"Unsupported graph canvas hit kind '{hit.Kind}'.");
+        }
+    }
+
     private void ClearSelection()
     {
         SetCurrentValue(SelectedNodeIdsProperty, Array.Empty<string>());
@@ -612,6 +844,71 @@ public sealed class GraphCanvas : FrameworkElement
         return new Point(
             (viewPoint.X - PanX) / Zoom,
             (viewPoint.Y - PanY) / Zoom);
+    }
+
+
+    private bool TryGetNodeBounds(string nodeId, out GraphRect bounds)
+    {
+        GraphLayoutNode? node = LayoutResult?.Nodes.FirstOrDefault(item => StringComparer.Ordinal.Equals(item.NodeId, nodeId));
+        bounds = node?.Bounds ?? default;
+        return node is not null;
+    }
+
+    private bool TryGetGroupBounds(string groupId, out GraphRect bounds)
+    {
+        GraphLayoutGroup? group = LayoutResult?.Groups.FirstOrDefault(item => StringComparer.Ordinal.Equals(item.GroupId, groupId));
+        bounds = group?.Bounds ?? default;
+        return group is not null;
+    }
+
+    private bool TryGetLinkBounds(string linkId, out GraphRect bounds)
+    {
+        GraphLayoutEdge? edge = LayoutResult?.Edges.FirstOrDefault(item => StringComparer.Ordinal.Equals(item.LinkId, linkId));
+        if (edge is null || edge.Points.Count == 0)
+        {
+            bounds = default;
+            return false;
+        }
+
+        double minX = edge.Points.Min(point => point.X);
+        double minY = edge.Points.Min(point => point.Y);
+        double maxX = edge.Points.Max(point => point.X);
+        double maxY = edge.Points.Max(point => point.Y);
+        bounds = new GraphRect(minX, minY, maxX - minX, maxY - minY);
+        return true;
+    }
+
+    private void CenterOnBounds(GraphRect bounds)
+    {
+        if (RenderSize.Width <= 0d || RenderSize.Height <= 0d)
+        {
+            return;
+        }
+
+        double contentCenterX = bounds.X + (bounds.Width / 2d);
+        double contentCenterY = bounds.Y + (bounds.Height / 2d);
+        SetCurrentValue(PanXProperty, (RenderSize.Width / 2d) - (contentCenterX * Zoom));
+        SetCurrentValue(PanYProperty, (RenderSize.Height / 2d) - (contentCenterY * Zoom));
+    }
+
+    private void FitToBounds(GraphRect bounds, Size viewportSize, double padding)
+    {
+        if (bounds.Width <= 0d || bounds.Height <= 0d || viewportSize.Width <= 0d || viewportSize.Height <= 0d)
+        {
+            CenterOnBounds(bounds);
+            return;
+        }
+
+        double safePadding = Math.Max(0d, padding);
+        double availableWidth = Math.Max(1d, viewportSize.Width - (safePadding * 2d));
+        double availableHeight = Math.Max(1d, viewportSize.Height - (safePadding * 2d));
+        double fittedZoom = CoerceZoomValue(Math.Min(availableWidth / bounds.Width, availableHeight / bounds.Height));
+        double scaledWidth = bounds.Width * fittedZoom;
+        double scaledHeight = bounds.Height * fittedZoom;
+
+        SetCurrentValue(ZoomProperty, fittedZoom);
+        SetCurrentValue(PanXProperty, ((viewportSize.Width - scaledWidth) / 2d) - (bounds.X * fittedZoom));
+        SetCurrentValue(PanYProperty, ((viewportSize.Height - scaledHeight) / 2d) - (bounds.Y * fittedZoom));
     }
 
     private static IReadOnlyList<string> UpdateSelection(
@@ -640,6 +937,11 @@ public sealed class GraphCanvas : FrameworkElement
         }
 
         return values.Count == 0 ? Array.Empty<string>() : values.ToArray();
+    }
+
+    private static string? NormalizeOptionalText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     private static IReadOnlyList<string> CopySelection(IEnumerable<string>? values)
@@ -694,6 +996,25 @@ public sealed class GraphCanvas : FrameworkElement
         double deltaX = point.X - closestX;
         double deltaY = point.Y - closestY;
         return (deltaX * deltaX) + (deltaY * deltaY);
+    }
+
+    private static void DrawWithOptionalOpacity(DrawingContext drawingContext, bool isDimmed, Action draw)
+    {
+        if (!isDimmed)
+        {
+            draw();
+            return;
+        }
+
+        drawingContext.PushOpacity(FocusDimOpacity);
+        draw();
+        drawingContext.Pop();
+    }
+
+    private static bool ContainsText(string id, string searchText)
+    {
+        return !string.IsNullOrWhiteSpace(searchText)
+            && id.Contains(searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     private static StreamGeometry CreatePolylineGeometry(IReadOnlyList<GraphPoint> points)
@@ -815,6 +1136,19 @@ public sealed class GraphCanvas : FrameworkElement
 
         Cursor = previousCursor;
         previousCursor = null;
+    }
+
+    private sealed record GraphCanvasFocusContext(string? NodeId, string? LinkId, string? GroupId, string SearchText)
+    {
+        public bool IsActive => NodeId is not null
+            || LinkId is not null
+            || GroupId is not null
+            || !string.IsNullOrWhiteSpace(SearchText);
+
+        public bool MatchesSearch(string id)
+        {
+            return ContainsText(id, SearchText);
+        }
     }
 
     private enum GraphCanvasHitKind
