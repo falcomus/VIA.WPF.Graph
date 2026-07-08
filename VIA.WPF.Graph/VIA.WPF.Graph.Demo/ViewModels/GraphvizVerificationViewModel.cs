@@ -1,63 +1,228 @@
+using System.Collections.ObjectModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using VIA.WPF.Graph.Graphviz.Verification;
+using VIA.WPF.Graph.Core.Layout;
+using VIA.WPF.Graph.Core.Model;
+using VIA.WPF.Graph.Core.Validation;
+using VIA.WPF.Graph.Demo.TestData;
+using VIA.WPF.Graph.Graphviz.Layout;
 
 namespace VIA.WPF.Graph.Demo.ViewModels;
 
 public partial class GraphvizVerificationViewModel : ObservableObject
 {
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(RunVerificationCommand))]
-    private bool isVerificationRunning;
+    [NotifyCanExecuteChangedFor(nameof(RunLayoutCommand))]
+    private bool isLayoutRunning;
 
     [ObservableProperty]
-    private string resultText = "P0-003 wird gestartet ...";
+    [NotifyCanExecuteChangedFor(nameof(RunLayoutCommand))]
+    private GraphDemoTestSet? selectedTestSet;
+
+    [ObservableProperty]
+    private GraphLayoutDirection selectedDirection = GraphLayoutDirection.LeftToRight;
+
+    [ObservableProperty]
+    private GraphDocument? currentDocument;
+
+    [ObservableProperty]
+    private GraphLayoutResult? currentLayout;
+
+    [ObservableProperty]
+    private GraphViewMode activeViewMode = GraphViewMode.GroupOverview;
+
+    [ObservableProperty]
+    private double visualDensity = 1d;
+
+    [ObservableProperty]
+    private double zoom = 1d;
+
+    [ObservableProperty]
+    private double panX;
+
+    [ObservableProperty]
+    private double panY;
+
+    [ObservableProperty]
+    private string resultText = "Phase 5 testsets are ready.";
 
     [ObservableProperty]
     private string technicalDetails = string.Empty;
 
-    [ObservableProperty]
-    private GraphvizReferenceLayoutViewModel? topToBottomLayout;
-
-    [ObservableProperty]
-    private GraphvizReferenceLayoutViewModel? leftToRightLayout;
-
     public GraphvizVerificationViewModel()
     {
-        RunVerificationCommand.Execute(null);
+        TestSets = new ObservableCollection<GraphDemoTestSet>(GraphDemoTestSetFactory.CreateAll());
+        LayoutDirections =
+        [
+            GraphLayoutDirection.LeftToRight,
+            GraphLayoutDirection.TopToBottom
+        ];
+
+        SelectedTestSet = TestSets.FirstOrDefault();
+        RunLayoutCommand.Execute(null);
     }
 
-    private bool CanRunVerification()
+    public ObservableCollection<GraphDemoTestSet> TestSets { get; }
+
+    public IReadOnlyList<GraphLayoutDirection> LayoutDirections { get; }
+
+    public IReadOnlyList<GraphViewMode> ViewModes { get; } =
+    [
+        GraphViewMode.GroupOverview,
+        GraphViewMode.Overview,
+        GraphViewMode.Focus,
+        GraphViewMode.Diagnostic
+    ];
+
+    partial void OnSelectedTestSetChanged(GraphDemoTestSet? value)
     {
-        return !IsVerificationRunning;
+        if (value is not null)
+        {
+            _ = RunLayoutCommand.ExecuteAsync(null);
+        }
     }
 
-    [RelayCommand(CanExecute = nameof(CanRunVerification))]
-    private async Task RunVerificationAsync()
+    partial void OnSelectedDirectionChanged(GraphLayoutDirection value)
     {
+        _ = RunLayoutCommand.ExecuteAsync(null);
+    }
+
+    private bool CanRunLayout()
+    {
+        return !IsLayoutRunning && SelectedTestSet is not null;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRunLayout))]
+    private async Task RunLayoutAsync()
+    {
+        if (SelectedTestSet is not { } testSet)
+        {
+            return;
+        }
+
         try
         {
-            IsVerificationRunning = true;
-            ResultText = "P0-003 läuft ...";
+            IsLayoutRunning = true;
+            ResultText = $"{testSet.Name}: layout is running ...";
             TechnicalDetails = string.Empty;
-            TopToBottomLayout = null;
-            LeftToRightLayout = null;
+            CurrentDocument = testSet.Document;
+            CurrentLayout = null;
+            ActiveViewMode = testSet.DefaultViewMode;
+            VisualDensity = testSet.DefaultVisualDensity;
+            Zoom = 1d;
+            PanX = 0d;
+            PanY = 0d;
 
-            GraphvizRuntimeProbeResult result = await Task.Run(GraphvizRuntimeProbe.Run);
+            GraphValidationResult validation = GraphDocumentValidator.Validate(testSet.Document);
+            GraphLayoutOptions options = new(SelectedDirection, GraphEdgeRoutingStyle.Spline);
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            GraphLayoutResult layoutResult = await Task.Run(() => GraphvizLayoutEngine.Layout(testSet.Document, options));
+            stopwatch.Stop();
 
-            TopToBottomLayout = GraphvizReferenceLayoutViewModel.Create(result.TopToBottom);
-            LeftToRightLayout = GraphvizReferenceLayoutViewModel.Create(result.LeftToRight);
-            TechnicalDetails = result.ToDisplayText();
-            ResultText = "P0-003 PASSED – beide Graphviz-Layouts wurden als WPF-Testbild erzeugt.";
+            CurrentLayout = layoutResult;
+            TechnicalDetails = CreateTechnicalDetails(testSet, validation, layoutResult, stopwatch.Elapsed);
+            ResultText = layoutResult.Succeeded
+                ? $"{testSet.Name}: {testSet.NodeCount} nodes, {testSet.LinkCount} links, {testSet.GroupCount} groups laid out in {stopwatch.ElapsedMilliseconds} ms."
+                : $"{testSet.Name}: layout failed.";
         }
         catch (Exception exception)
         {
-            ResultText = "P0-003 FAILED – die technische Referenz konnte nicht erzeugt werden.";
+            CurrentLayout = null;
+            ResultText = $"{testSet.Name}: layout failed.";
             TechnicalDetails = exception.ToString();
         }
         finally
         {
-            IsVerificationRunning = false;
+            IsLayoutRunning = false;
         }
+    }
+
+    [RelayCommand]
+    private void ShowAreaOverview()
+    {
+        ActiveViewMode = GraphViewMode.GroupOverview;
+    }
+
+    [RelayCommand]
+    private void ShowFullGraph()
+    {
+        ActiveViewMode = GraphViewMode.Overview;
+    }
+
+    [RelayCommand]
+    private void SetCompactDensity()
+    {
+        VisualDensity = 0.72d;
+    }
+
+    [RelayCommand]
+    private void SetNormalDensity()
+    {
+        VisualDensity = 1d;
+    }
+
+    private static string CreateTechnicalDetails(
+        GraphDemoTestSet testSet,
+        GraphValidationResult validation,
+        GraphLayoutResult layoutResult,
+        TimeSpan elapsed)
+    {
+        GraphDocument document = testSet.Document;
+        int containerGroupCount = document.Groups.Count(group => group.Kind == GraphGroupKind.Container);
+        int markerGroupCount = document.Groups.Count(group => group.Kind == GraphGroupKind.Marker);
+        int popupNodeCount = document.Nodes.Count(node => node.Kind == GraphNodeKind.Popup);
+        int externalNodeCount = document.Nodes.Count(node => node.Kind == GraphNodeKind.External);
+        int backLinkCount = document.Links.Count(link => link.Kind == GraphLinkKind.Back);
+        int externalLinkCount = document.Links.Count(link => link.Kind == GraphLinkKind.External);
+
+        List<string> lines =
+        [
+            $"Testset: {testSet.Name}",
+            testSet.Description,
+            string.Empty,
+            $"Document id: {document.Id}",
+            $"Direction: {layoutResult.Options.Direction}",
+            $"Nodes: {document.Nodes.Count}",
+            $"Links: {document.Links.Count}",
+            $"Groups: {document.Groups.Count} ({containerGroupCount} container, {markerGroupCount} marker)",
+            $"Popup nodes: {popupNodeCount}",
+            $"External nodes: {externalNodeCount}",
+            $"Back links: {backLinkCount}",
+            $"External links: {externalLinkCount}",
+            string.Empty,
+            $"Validation: {(validation.IsValid ? "valid" : "invalid")}",
+            $"Validation issues: {validation.Issues.Count}",
+            $"Layout succeeded: {layoutResult.Succeeded}",
+            $"Layout time: {elapsed.TotalMilliseconds:0.0} ms"
+        ];
+
+        if (layoutResult.GraphBounds is { } bounds)
+        {
+            lines.Add($"Layout bounds: X={bounds.X:0.0}, Y={bounds.Y:0.0}, W={bounds.Width:0.0}, H={bounds.Height:0.0}");
+        }
+
+        if (layoutResult.Error is not null)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Layout error:");
+            lines.Add(layoutResult.Error.Message);
+            if (!string.IsNullOrWhiteSpace(layoutResult.Error.Details))
+            {
+                lines.Add(layoutResult.Error.Details);
+            }
+        }
+
+        if (validation.Issues.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Validation issues:");
+            foreach (GraphValidationIssue issue in validation.Issues)
+            {
+                lines.Add($"- {issue.Severity} {issue.Code}: {issue.Message}");
+            }
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 }
