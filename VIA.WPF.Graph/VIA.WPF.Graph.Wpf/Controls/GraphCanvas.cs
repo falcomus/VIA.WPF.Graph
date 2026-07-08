@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using VIA.WPF.Graph.Core.Layout;
+using VIA.WPF.Graph.Core.Requests;
 
 namespace VIA.WPF.Graph.Wpf.Controls;
 
@@ -136,6 +137,13 @@ public sealed class GraphCanvas : FrameworkElement
             FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender,
             OnFocusPropertyChanged));
 
+
+    public static readonly DependencyProperty GraphRequestCommandProperty = DependencyProperty.Register(
+        nameof(GraphRequestCommand),
+        typeof(ICommand),
+        typeof(GraphCanvas),
+        new FrameworkPropertyMetadata(null));
+
     private const double DefaultTextSize = 12d;
     private const double NodeCornerRadius = 5d;
     private const double ArrowLength = 10d;
@@ -256,6 +264,13 @@ public sealed class GraphCanvas : FrameworkElement
     {
         get => (string?)GetValue(SearchTextProperty) ?? string.Empty;
         set => SetValue(SearchTextProperty, value ?? string.Empty);
+    }
+
+
+    public ICommand? GraphRequestCommand
+    {
+        get => (ICommand?)GetValue(GraphRequestCommandProperty);
+        set => SetValue(GraphRequestCommandProperty, value);
     }
 
     protected override int VisualChildrenCount => 3;
@@ -517,6 +532,7 @@ public sealed class GraphCanvas : FrameworkElement
         }
 
         ReturnToOverview();
+        ExecuteGraphRequest(GraphRequest.ReturnToOverview());
         e.Handled = true;
     }
 
@@ -772,6 +788,7 @@ public sealed class GraphCanvas : FrameworkElement
             if (!isMultiSelection)
             {
                 ClearSelection();
+                ExecuteGraphRequest(GraphRequest.ClearSelection());
             }
 
             return;
@@ -781,6 +798,7 @@ public sealed class GraphCanvas : FrameworkElement
         {
             case GraphCanvasHitKind.Node:
                 SetCurrentValue(SelectedNodeIdsProperty, UpdateSelection(SelectedNodeIds, hit.Id, isMultiSelection));
+                ExecuteGraphRequest(GraphRequest.SelectNode(hit.Id, isMultiSelection));
                 if (!isMultiSelection)
                 {
                     SetCurrentValue(SelectedLinkIdsProperty, Array.Empty<string>());
@@ -789,6 +807,7 @@ public sealed class GraphCanvas : FrameworkElement
                 break;
             case GraphCanvasHitKind.Link:
                 SetCurrentValue(SelectedLinkIdsProperty, UpdateSelection(SelectedLinkIds, hit.Id, isMultiSelection));
+                ExecuteGraphRequest(GraphRequest.SelectLink(hit.Id, isMultiSelection));
                 if (!isMultiSelection)
                 {
                     SetCurrentValue(SelectedNodeIdsProperty, Array.Empty<string>());
@@ -797,6 +816,7 @@ public sealed class GraphCanvas : FrameworkElement
                 break;
             case GraphCanvasHitKind.Group:
                 SetCurrentValue(SelectedGroupIdsProperty, UpdateSelection(SelectedGroupIds, hit.Id, isMultiSelection));
+                ExecuteGraphRequest(GraphRequest.SelectGroup(hit.Id, isMultiSelection));
                 if (!isMultiSelection)
                 {
                     SetCurrentValue(SelectedNodeIdsProperty, Array.Empty<string>());
@@ -813,6 +833,7 @@ public sealed class GraphCanvas : FrameworkElement
         if (hit is null)
         {
             ReturnToOverview();
+            ExecuteGraphRequest(GraphRequest.ReturnToOverview());
             return;
         }
 
@@ -820,12 +841,15 @@ public sealed class GraphCanvas : FrameworkElement
         {
             case GraphCanvasHitKind.Node:
                 _ = FocusNode(hit.Id);
+                ExecuteGraphRequest(GraphRequest.OpenNode(hit.Id));
                 break;
             case GraphCanvasHitKind.Link:
                 _ = FocusLink(hit.Id);
+                ExecuteGraphRequest(GraphRequest.OpenLink(hit.Id));
                 break;
             case GraphCanvasHitKind.Group:
                 _ = DrillDownToGroup(hit.Id);
+                ExecuteGraphRequest(GraphRequest.OpenGroup(hit.Id));
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported graph canvas hit kind '{hit.Kind}'.");
@@ -837,6 +861,18 @@ public sealed class GraphCanvas : FrameworkElement
         SetCurrentValue(SelectedNodeIdsProperty, Array.Empty<string>());
         SetCurrentValue(SelectedLinkIdsProperty, Array.Empty<string>());
         SetCurrentValue(SelectedGroupIdsProperty, Array.Empty<string>());
+    }
+
+
+    private void ExecuteGraphRequest(GraphRequest request)
+    {
+        ICommand? command = GraphRequestCommand;
+        if (command is null || !command.CanExecute(request))
+        {
+            return;
+        }
+
+        command.Execute(request);
     }
 
     private Point ViewToContent(Point viewPoint)
