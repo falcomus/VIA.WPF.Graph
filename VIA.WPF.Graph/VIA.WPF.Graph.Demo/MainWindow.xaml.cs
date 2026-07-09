@@ -23,8 +23,8 @@ public partial class MainWindow : Window
         DataContext = viewModel;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        GraphCanvasHost.SizeChanged += OnGraphCanvasHostSizeChanged;
-        GraphCanvasView.SizeChanged += OnGraphCanvasViewSizeChanged;
+        GraphSurfaceHost.SizeChanged += OnGraphSurfaceHostSizeChanged;
+        GraphSurfaceView.SizeChanged += OnGraphSurfaceViewSizeChanged;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
     }
 
@@ -35,20 +35,20 @@ public partial class MainWindow : Window
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        GraphCanvasHost.SizeChanged -= OnGraphCanvasHostSizeChanged;
-        GraphCanvasView.SizeChanged -= OnGraphCanvasViewSizeChanged;
+        GraphSurfaceHost.SizeChanged -= OnGraphSurfaceHostSizeChanged;
+        GraphSurfaceView.SizeChanged -= OnGraphSurfaceViewSizeChanged;
         viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
     }
 
-    private void OnGraphCanvasHostSizeChanged(object sender, SizeChangedEventArgs e)
+    private void OnGraphSurfaceHostSizeChanged(object sender, SizeChangedEventArgs e)
     {
         FitGraphAfterLayoutPass(force: false);
         UpdateGraphScrollBarsAfterLayoutPass();
     }
 
-    private void OnGraphCanvasViewSizeChanged(object sender, SizeChangedEventArgs e)
+    private void OnGraphSurfaceViewSizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateGraphScrollBarsAfterLayoutPass();
     }
@@ -204,14 +204,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        GraphRect bounds = GraphCanvasView.LayoutBounds;
+        GraphRect bounds = GraphSurfaceView.LayoutBounds;
         if (bounds.Width <= 0d)
         {
             return;
         }
 
         viewModel.IsFreeNavigationEnabled = true;
-        GraphCanvasView.PanX = -e.NewValue - (bounds.X * GraphCanvasView.Zoom);
+        GraphSurfaceView.PanX = -e.NewValue - (bounds.X * GraphSurfaceView.Zoom);
         UpdateGraphScrollBarsAfterLayoutPass();
     }
 
@@ -222,14 +222,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        GraphRect bounds = GraphCanvasView.LayoutBounds;
+        GraphRect bounds = GraphSurfaceView.LayoutBounds;
         if (bounds.Height <= 0d)
         {
             return;
         }
 
         viewModel.IsFreeNavigationEnabled = true;
-        GraphCanvasView.PanY = -e.NewValue - (bounds.Y * GraphCanvasView.Zoom);
+        GraphSurfaceView.PanY = -e.NewValue - (bounds.Y * GraphSurfaceView.Zoom);
         UpdateGraphScrollBarsAfterLayoutPass();
     }
 
@@ -251,7 +251,7 @@ public partial class MainWindow : Window
                     return;
                 }
 
-                GraphCanvasView.FitToGraph(viewportSize.Value, GetGraphFitPadding(viewportSize.Value));
+                GraphSurfaceView.FitToGraph(viewportSize.Value, GetGraphFitPadding(viewportSize.Value));
                 UpdateGraphScrollBars();
             },
             DispatcherPriority.Loaded);
@@ -281,7 +281,7 @@ public partial class MainWindow : Window
                     ? null
                     : layout.Nodes.FirstOrDefault(node => StringComparer.Ordinal.Equals(node.NodeId, selectedNodeId));
 
-                GraphRect targetBounds = selectedLayoutNode?.Bounds ?? GraphCanvasView.LayoutBounds;
+                GraphRect targetBounds = selectedLayoutNode?.Bounds ?? GraphSurfaceView.LayoutBounds;
                 if (targetBounds.Width <= 0d || targetBounds.Height <= 0d)
                 {
                     UpdateGraphScrollBars();
@@ -290,8 +290,8 @@ public partial class MainWindow : Window
 
                 double contentCenterX = targetBounds.X + (targetBounds.Width / 2d);
                 double contentCenterY = targetBounds.Y + (targetBounds.Height / 2d);
-                GraphCanvasView.PanX = (viewportSize.Value.Width / 2d) - (contentCenterX * GraphCanvasView.Zoom);
-                GraphCanvasView.PanY = (viewportSize.Value.Height / 2d) - (contentCenterY * GraphCanvasView.Zoom);
+                GraphSurfaceView.PanX = (viewportSize.Value.Width / 2d) - (contentCenterX * GraphSurfaceView.Zoom);
+                GraphSurfaceView.PanY = (viewportSize.Value.Height / 2d) - (contentCenterY * GraphSurfaceView.Zoom);
                 UpdateGraphScrollBars();
             },
             DispatcherPriority.Loaded);
@@ -302,7 +302,7 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(
             () =>
             {
-                GraphCanvasView.Zoom = 1d;
+                GraphSurfaceView.Zoom = 1d;
                 CenterSelectedGraphNodeAfterLayoutPass();
                 UpdateGraphScrollBars();
             },
@@ -325,7 +325,7 @@ public partial class MainWindow : Window
         {
             isUpdatingGraphScrollBars = true;
             Size? viewportSize = GetGraphViewportSizeOrNull();
-            GraphRect bounds = GraphCanvasView.LayoutBounds;
+            GraphRect bounds = GraphSurfaceView.LayoutBounds;
             if (viewModel.VisibleLayout is not { Succeeded: true }
                 || viewportSize is null
                 || bounds.Width <= 0d
@@ -335,7 +335,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            double zoom = GraphCanvasView.Zoom;
+            double zoom = GraphSurfaceView.Zoom;
             double scaledWidth = bounds.Width * zoom;
             double scaledHeight = bounds.Height * zoom;
             bool horizontalVisible = scaledWidth > viewportSize.Value.Width + 1d;
@@ -346,7 +346,7 @@ public partial class MainWindow : Window
             if (horizontalVisible)
             {
                 double max = Math.Max(0d, scaledWidth - viewportSize.Value.Width);
-                double value = Math.Clamp(-(bounds.X * zoom + GraphCanvasView.PanX), 0d, max);
+                double value = Math.Clamp(-(bounds.X * zoom + GraphSurfaceView.PanX), 0d, max);
                 GraphHorizontalScrollBar.Minimum = 0d;
                 GraphHorizontalScrollBar.Maximum = max;
                 GraphHorizontalScrollBar.ViewportSize = viewportSize.Value.Width;
@@ -358,7 +358,7 @@ public partial class MainWindow : Window
             if (verticalVisible)
             {
                 double max = Math.Max(0d, scaledHeight - viewportSize.Value.Height);
-                double value = Math.Clamp(-(bounds.Y * zoom + GraphCanvasView.PanY), 0d, max);
+                double value = Math.Clamp(-(bounds.Y * zoom + GraphSurfaceView.PanY), 0d, max);
                 GraphVerticalScrollBar.Minimum = 0d;
                 GraphVerticalScrollBar.Maximum = max;
                 GraphVerticalScrollBar.ViewportSize = viewportSize.Value.Height;
@@ -382,13 +382,13 @@ public partial class MainWindow : Window
 
     private Size? GetGraphViewportSizeOrNull()
     {
-        double viewportWidth = GraphCanvasView.ActualWidth;
-        double viewportHeight = GraphCanvasView.ActualHeight;
+        double viewportWidth = GraphSurfaceView.ActualWidth;
+        double viewportHeight = GraphSurfaceView.ActualHeight;
 
         if (viewportWidth <= 1d || viewportHeight <= 1d)
         {
-            viewportWidth = GraphCanvasHost.ActualWidth - GraphCanvasHost.BorderThickness.Left - GraphCanvasHost.BorderThickness.Right;
-            viewportHeight = GraphCanvasHost.ActualHeight - GraphCanvasHost.BorderThickness.Top - GraphCanvasHost.BorderThickness.Bottom;
+            viewportWidth = GraphSurfaceHost.ActualWidth - GraphSurfaceHost.BorderThickness.Left - GraphSurfaceHost.BorderThickness.Right;
+            viewportHeight = GraphSurfaceHost.ActualHeight - GraphSurfaceHost.BorderThickness.Top - GraphSurfaceHost.BorderThickness.Bottom;
         }
 
         return viewportWidth <= 1d || viewportHeight <= 1d

@@ -1,12 +1,15 @@
 # VIA.WPF.Graph – Masterplan für allgemeine Graph-Visualisierung und spätere UserFlow-Integration
 
-**Status:** geprüfter Architektur- und Entwicklungsplan, noch keine Implementierungsfreigabe je Phase  
+**Status:** geprüfter Architektur- und Entwicklungsplan, fortgeschrieben bis Skia-R7-Stand  
 **Ziel:** Allgemein nutzbare Graph-Visualisierung für WPF in der Solution `VIA.WPF.Graph`, zunächst als unabhängiges Test-/Prototyp-Projekt, danach schrittweise Integration in VIA UserFlow.  
 **Layout-Engine:** `Rubjerg.Graphviz` **3.0.5** / Graphviz `dot`.  
+**Renderbasis:** WPF-Host mit `SkiaGraphSurface` auf `SkiaSharp.Views.WPF` für die aktive Product-Demo-Graphfläche; die frühere WPF-`GraphCanvas` bleibt vorerst als Legacy-/Vergleichsbestand erhalten.  
 **MVVM-Standard:** überall CommunityToolkit.Mvvm (`ObservableObject`, `[ObservableProperty]`, `[RelayCommand]`, `[AsyncRelayCommand]`, bei Bedarf `ObservableRecipient` und `WeakReferenceMessenger`).  
 **Arbeitsregel:** Jede Phase endet mit lokaler Build-/Funktionsprüfung und explizitem Step-Gate.
 
 **Revision 4 – Vollständigkeitsprüfung, Übergabe und strikte Host-Isolation:** Dieser Stand enthält zusätzlich die bisher besprochenen Punkte zu Tree/Graph-Hybridansicht, Karten-Badges für Rückwege, Popup-Darstellung, allgemeinen Knoten/Links/Gruppen, überlappenden Gruppen, Collapse/Expand, Bearbeitung über ActionAreas, CommunityToolkit.Mvvm, Persistenz, Altprojekt-Migration, der aktuellen Einschränkung des ActionArea-Editors sowie einen vollständigen Übergabeauftrag für einen neuen Chat. Die frühere Graphviz-Demo ist ausdrücklich keine technische Baseline.
+
+**Revision 7 – Skia-R7-Fortschreibung:** Nach R7-001/R7-002 ist `SkiaGraphSurface` die aktive Renderfläche der Product Demo. Skia übernimmt Rendering, Hit-Testing, Pan/Zoom, Selection-Overlays und Präsentationsdarstellung innerhalb von `VIA.WPF.Graph.Wpf`; Graphviz bleibt ausschließlich für Layout und Routing zuständig. Die alte WPF-`GraphCanvas` wird nicht weiter optisch ausgebaut und darf erst nach einem eigenen API-/Kompatibilitäts-Step-Gate entfernt werden. Vor der UserFlow-Integration werden Scope-Policy, Link-Routing, Viewport/Scrollbars und Interaktionsrequests auf Skia-Basis gehärtet.
 
 ---
 
@@ -40,7 +43,7 @@ Die Lösung wird so aufgebaut, dass UserFlow nur ein erster Host ist. Andere Anw
    Der Graph-Renderer erhält eine Projektion beziehungsweise einen unveränderlichen Render-Snapshot. Die fachliche Wahrheit bleibt im jeweiligen Host-Model/ViewModel.
 
 2. **Keine Mutation durch Graph-UI.**  
-   Graph-Canvas und Tree senden nur klar typisierte Interaktions- beziehungsweise Änderungsanfragen. Ausschließlich der Host verarbeitet diese und ändert seine Modelle/Collections.
+   Graph-Surface und Tree senden nur klar typisierte Interaktions- beziehungsweise Änderungsanfragen. Ausschließlich der Host verarbeitet diese und ändert seine Modelle/Collections.
 
 3. **Single Source of Truth.**  
    Bei UserFlow bleiben `Project.Screens`, `Project.Popups`, `ActionArea.Actions` und deren ActionDefinitions die alleinigen Quellen für Navigation. Es entstehen keine synchron gehaltenen Navigationscollections.
@@ -49,10 +52,10 @@ Die Lösung wird so aufgebaut, dass UserFlow nur ein erster Host ist. Andere Anw
    Ein Gesamtgraph mit 100–150 Screens ist Diagnoseansicht, nicht Standardarbeitsansicht. Die Standardansicht kombiniert Tree, Bereichsfluss und fokussierte Graphdarstellung.
 
 5. **Graphviz nur als Layout-Engine.**  
-   Graphviz bestimmt Knotenpositionen, Cluster-Bounds und Kantenverläufe. WPF rendert Karten, Labels, Badges, Auswahl, Zoom, Pan, Hit-Testing und Interaktionen vollständig selbst.
+   Graphviz bestimmt Knotenpositionen, Cluster-Bounds und Kantenverläufe. WPF/Skia rendert Karten, Labels, Badges, Auswahl, Zoom, Pan, Hit-Testing und Interaktionen vollständig selbst.
 
 6. **WPF-spezifische Teile bleiben getrennt.**  
-   Das neutrale Graphmodell darf keine WPF-, SkiaSharp-, Graphviz- oder UserFlow-Abhängigkeit enthalten.
+   Das neutrale Graphmodell darf keine WPF-, SkiaSharp-, Graphviz- oder UserFlow-Abhängigkeit enthalten. SkiaSharp bleibt ausschließlich eine WPF-Renderer-Abhängigkeit.
 
 7. **CommunityToolkit.Mvvm als Standard.**  
    Neue ViewModels, UI-Zustände und Commands verwenden ausschließlich Toolkit-Muster. Klassische handgeschriebene `INotifyPropertyChanged`-Implementierungen werden nicht neu eingeführt.
@@ -74,12 +77,12 @@ Die Lösung wird so aufgebaut, dass UserFlow nur ein erster Host ist. Andere Anw
 | Knoten mit Titel, Defaultgröße und Farbe/Style | neutrale Knotenbeschreibung plus Style-Key und WPF-Templates |
 | Links mit Quelle, Ziel, Richtung, Typ und Linienstil | Linkmodell, semantische Link-Kategorien und Renderingregeln |
 | beliebige, auch überlappende Gruppen | Trennung in Container- und Markierungsgruppen |
-| Anordnen, Zoomen und Gruppen sichtbar machen | GraphCanvas, Graphviz-Layout, Bereichs- und Gruppenprojektionen |
+| Anordnen, Zoomen und Gruppen sichtbar machen | SkiaGraphSurface, Graphviz-Layout, Bereichs- und Gruppenprojektionen; legacy GraphCanvas nur noch als Altbestand |
 | Auswahl einzelner/mehrerer Gruppen | Gruppenselektion, Mehrfachauswahl, Fokus und Filter |
 | Collapse/Expand | ausschließlich für disjunkte/hierarchische Container-Gruppen |
 | Tree links, Gesamtgraph rechts | Hybridansicht mit synchroner Auswahl |
 | Oder-Verzweigungen | Tree-Siblings als Alternativen; kein doppeltes Rendern von Rückzielen |
-| Back-Pfeil und Badge in der Karte | Back-Footer/Badge, bei UserFlow nur mit fachlich ehrlicher Zielangabe |
+| Back-/Sondertyp-Hinweise in der Karte | neutrale Typ-/Linkdarstellung ohne UserFlow-Annahmen; bei UserFlow nur mit fachlich ehrlicher Zielangabe |
 | Popups | kleinere Overlay-Karten, PopupOpen-Kanten und Tree-Knoten |
 | bestehende Navigation ändern / neue anlegen | getrennte Phasen über Host-Requests und ActionArea/ActionDefinition |
 | Wiederverwendbarkeit in anderen Anwendungen | hostneutrale Modelle, Capabilities und Adaptergrenze |
@@ -155,8 +158,10 @@ VIA.WPF.Graph.Graphviz
   DOT-Erzeugung, Layoutauswertung, Kanten-/Cluster-Geometrie
 
 VIA.WPF.Graph.Wpf
-  GraphCanvas, Zoom/Pan, Knoten- und Kanten-Templates,
-  Tree-/Pfadansicht, Auswahl, Suche, Fokus, Interaktions-Requests
+  SkiaGraphSurface als primärer Renderer, Zoom/Pan, Hit-Testing,
+  Knoten-/Kanten-/Gruppenrendering, Tree-/Pfadansicht,
+  Auswahl, Suche, Fokus, Interaktions-Requests;
+  GraphCanvas bleibt vorerst Legacy-/Vergleichsbestand
 
 VIA.WPF.Graph.Demo
   Eigenständige WPF-Testanwendung mit Testdaten,
@@ -187,6 +192,7 @@ Verboten:
 
 ```text
 VIA.WPF.Graph.Core -> WPF
+VIA.WPF.Graph.Core -> SkiaSharp
 VIA.WPF.Graph.Core -> Rubjerg.Graphviz
 VIA.WPF.Graph.* -> Mockup / UserFlow
 Graph-Renderer -> UserFlow-Collections direkt
@@ -222,14 +228,14 @@ Repository-Root/
 ```text
 VIA.WPF.Graph.Core      -> keine Projekt-, WPF-, Graphviz-, UserFlow- oder Host-Abhängigkeit
 VIA.WPF.Graph.Graphviz  -> VIA.WPF.Graph.Core
-VIA.WPF.Graph.Wpf       -> VIA.WPF.Graph.Core
+VIA.WPF.Graph.Wpf       -> VIA.WPF.Graph.Core, SkiaSharp.Views.WPF
 VIA.WPF.Graph.Demo      -> VIA.WPF.Graph.Core, VIA.WPF.Graph.Graphviz, VIA.WPF.Graph.Wpf
 
 VIA.WPF.Graph.Graphviz <-> VIA.WPF.Graph.Wpf                 verboten
 Alle VIA.WPF.Graph.*-Projekte -> UserFlow / Mockup           verboten
 ```
 
-Die Demo ist ausschließlich der Composition Root. Sie darf Graphviz-Layout und WPF-Renderer zusammensetzen. Der WPF-Renderer erhält weder eine Projekt- noch eine Paketabhängigkeit zu Graphviz; Graphviz bleibt ausschließlich Layoutadapter.
+Die Demo ist ausschließlich der Composition Root. Sie darf Graphviz-Layout und WPF-/Skia-Renderer zusammensetzen. Der WPF-Renderer erhält weder eine Projekt- noch eine Paketabhängigkeit zu Graphviz; Graphviz bleibt ausschließlich Layoutadapter. `SkiaSharp.Views.WPF` ist als reine Renderer-Abhängigkeit in `VIA.WPF.Graph.Wpf` zulässig und darf nicht in den Core wandern.
 
 P0-001 dokumentiert diese Struktur, erzeugt aber keine Projekt-, NuGet-, C#- oder XAML-Dateien. Solche Dateien gehören erst in einen danach ausdrücklich freigegebenen Umsetzungsschritt.
 
@@ -364,7 +370,7 @@ Neutrales Graphdokument
     -> DOT-Modell
     -> Rubjerg.Graphviz / dot
     -> Layout-Ergebnis
-    -> WPF-Renderer
+    -> WPF-/Skia-Renderer
 ```
 
 Graphviz liefert:
@@ -375,7 +381,7 @@ Graphviz liefert:
 - Richtung und Layering,
 - Kreuzungsreduktion innerhalb der verfügbaren Layoutregeln.
 
-WPF liefert:
+WPF/Skia liefert:
 
 - Knoten-Karten,
 - Popups als eigene Templates,
@@ -390,7 +396,7 @@ WPF liefert:
 
 Graphviz benötigt Knotengrößen vor dem Layout. Daher arbeitet jede Ansicht zunächst mit festen, je Template definierten Größenprofilen (`Compact`, `Standard`, `Detail`, `Popup`, `Stub`). Dynamisch gemessene WPF-Karten dürfen erst nach einem kontrollierten Rebuild Einfluss auf das Layout nehmen; sie dürfen nicht stillschweigend andere Graphviz-Maße verwenden.
 
-Der Graphviz-Adapter kapselt die Umrechnung zwischen DOT-/Point-Koordinaten und WPF-DIPs an genau einer Stelle. Alle Bounds, Splines, Zoom- und Hit-Test-Berechnungen verwenden danach nur noch dieses gemeinsame WPF-Koordinatensystem.
+Der Graphviz-Adapter kapselt die Umrechnung zwischen DOT-/Point-Koordinaten und WPF-DIPs an genau einer Stelle. Alle Bounds, Splines, Zoom- und Hit-Test-Berechnungen verwenden danach nur noch dieses gemeinsame DIP-Koordinatensystem. `SkiaGraphSurface` rendert diese Koordinaten direkt über Skia und hält seine hit-testbaren Node-/Link-/Group-Bounds aus dem aktuellen Render-Snapshot vor.
 
 ### 6.2 Standardlayoutregeln
 
@@ -429,11 +435,11 @@ Die Wahl wird nicht als globale technische Einstellung erzwungen. Sie gehört in
 
 ---
 
-## 7. WPF-Darstellung und Interaktion
+## 7. WPF-/Skia-Darstellung und Interaktion
 
-### 7.1 Rechter Bereich: GraphCanvas
+### 7.1 Rechter Bereich: SkiaGraphSurface
 
-Der GraphCanvas wird ein eigenes WPF-Control, kein fremder Graphviewer.
+`SkiaGraphSurface` ist die primäre Graphfläche. Sie ist ein eigenes WPF-Control auf Basis von `SKElement`, kein fremder Graphviewer. Die frühere WPF-`GraphCanvas` bleibt nur noch als Legacy-/Vergleichsbestand, bis ein eigenes Step-Gate über Entfernung oder API-Kompatibilität entscheidet.
 
 Funktionen der ersten produktiven Ausbaustufe:
 
@@ -445,9 +451,38 @@ Funktionen der ersten produktiven Ausbaustufe:
 - Mehrfachauswahl per Modifier,
 - Gruppenauswahl,
 - Suche und Zentrieren,
-- Fokusmodus mit ausgegrautem Restgraph,
+- Fokusmodus mit konfigurierbarer Scope- und Dichte-Policy,
 - Auswahl synchron zum Tree,
-- Kontextmenü über hostseitige Commands.
+- Kontextmenü über hostseitige Commands,
+- optionaler Viewport-/Scrollbar-Vertrag oberhalb der Skia-Fläche, ohne Hostmodell-Mutation.
+
+### 7.1.1 Scope-Policy für Tree-Auswahl und Graphfläche
+
+Die Product Demo hat gezeigt, dass ein Gesamtgraph zwar mit Skia performant renderbar ist, aber nicht als Standardarbeitsansicht taugt. Deshalb wird die sichtbare Graphfläche über eine neutrale Scope-Policy aus dem vollständigen Graphdokument abgeleitet.
+
+Mögliche Scope-Modi:
+
+| Modus | Zweck |
+|---|---|
+| Node Focus | ausgewählter Knoten plus direkte Vorgänger/Nachfolger |
+| Branch | lokaler Navigationspfad mit begrenzter Tiefe |
+| Group Compact | Gruppe als Bereich mit Einstiegspunkten, wichtigen Knoten und gebündelten Übergängen |
+| Group Full | alle Knoten einer Containergruppe plus relevante Randübergänge |
+| Overview | kompletter Graph als Diagnose-/Map-Ansicht |
+
+Die Scope-Policy ist zunächst Host-/Demo-Logik. Sie wird erst in einen allgemeinen Library-Vertrag überführt, wenn die Regeln ausreichend stabil sind. Weder Core noch Renderer dürfen daraus UserFlow-, Screen- oder ActionArea-Annahmen ableiten.
+
+Konfigurationspunkte:
+
+```text
+NeighborDepth
+MaxVisibleNodes
+IncludedLinkKinds
+GroupDisplayMode
+ShowExternalLinks
+ShowBackAndCancelLinks
+ShowReferenceLinks
+```
 
 ### 7.2 Linker Bereich: Navigation Path Tree
 
@@ -499,7 +534,7 @@ Popups sind keine normalen Screens.
 **Im Graph:**
 
 - kleineres eigenes Template,
-- Popup-/Overlay-Badge,
+- Popup-/Overlay-Hinweis,
 - räumlich nahe beim auslösenden Screen,
 - PopupOpen-Link dezent oder gestrichelt,
 - ausgehende Navigation des Popups normal sichtbar, sofern sie fachlich existiert.
@@ -527,7 +562,7 @@ Zusätzlich:
 
 | Typ | Darstellung |
 |---|---|
-| Screen | Standardkarte mit Titel, optional Description und Actionanzahl |
+| Screen | Standardkarte mit Titel, optional Description und Actionanzahl; keine erzwungenen Standard-Badges |
 | Popup | kleinere Overlay-Karte |
 | Bereich | Cluster-/Bereichskarte in Übersicht |
 | Extern/Stub | reduzierte Karte für Übergang außerhalb der aktuellen Projektion |
@@ -537,10 +572,10 @@ Screen-Vorschauen aus UserFlow werden erst nach einer stabilen Basis ergänzt. S
 
 ### 7.6 Kantenlabels und visuelle Dichte
 
-- Detail- und Bereichsansichten zeigen Actionlabels direkt an der Kante oder als nahes Label-Chip.
+- Detail- und Bereichsansichten zeigen Actionlabels direkt an der Kante oder als nahes Label-Chip; Labels werden als eigene Render-Schicht nach Linien und Karten gezeichnet.
 - Gesamt- und Diagnoseansichten reduzieren Labels abhängig von Zoom und Dichte.
 - Bei Parallelkanten wird im kompakten Modus ein Bündel-Badge gezeigt; die Einzellinks bleiben auswählbar.
-- Back-, Cancel-, Popup- und External-Links bleiben auch ohne volles Label an Pfeilform, Badge und Linienstil erkennbar.
+- Back-, Cancel-, Popup- und External-Links bleiben auch ohne volles Label an Pfeilform, Typ-Hinweis und Linienstil erkennbar.
 - Kanten-Hit-Tests bleiben unabhängig davon möglich, ob das Label bei kleiner Zoomstufe ausgeblendet ist.
 
 ---
@@ -599,7 +634,7 @@ Diese Vorgänge laufen über hostseitige Commands und Services.
 
 ### 8.4 Änderungsrequests
 
-Der allgemeine Graph sendet nur Requests wie:
+Die allgemeine Graph-Surface sendet nur Requests wie:
 
 ```text
 OpenNode
@@ -613,7 +648,7 @@ SetGroupCollapsedRequested
 SetManualNodePositionRequested
 ```
 
-Der Host entscheidet, ob der Request unterstützt wird. Ein generischer Graph muss keinerlei fachliche Mutation kennen.
+Der Host entscheidet, ob der Request unterstützt wird. Eine generische Graph-Surface muss keinerlei fachliche Mutation kennen.
 
 ---
 
@@ -885,27 +920,28 @@ Graph-UI erhält danach nur einen neuen Render-Snapshot. Kein eigenes zweites Un
 
 ---
 
-### Phase 3 – VIA.WPF.Graph.Wpf: Canvas-Grundlage
+### Phase 3 – VIA.WPF.Graph.Wpf: Renderer-Grundlage
 
-**Ziel:** Vollständig eigener WPF-Renderer auf Basis des Layout-Ergebnisses.
+**Ziel:** Vollständig eigener WPF-/Skia-Renderer auf Basis des Layout-Ergebnisses.
 
 **Umfang:**
 
-- GraphCanvas mit Knoten- und Kantenlayer,
+- SkiaGraphSurface mit Knoten-, Kanten-, Gruppen- und Overlay-Layern,
 - Standard-, Compact-, Detail-, Popup- und Stub-Templates,
 - Zoom, Pan, Fit-to-Graph,
 - Knoten-/Kanten-Hit-Test,
 - Einzel- und Mehrfachauswahl,
 - Hover, Fokus, Suchzentrierung, Drill-down in Bereiche und Rückkehr zur Übersicht,
 - Commands und hostseitig gebundener View-State,
-- keine direkte Hostmutation.
+- keine direkte Hostmutation,
+- Legacy-GraphCanvas nicht weiter optisch ausbauen.
 
 **Abnahme:**
 
 - Mouse Wheel zoomt, freie Fläche verschiebt,
 - Auswahl bleibt beim Rebuild logisch erhalten, sofern Id noch vorhanden,
-- Canvas-Größe wird aus Layoutbounds abgeleitet,
-- WPF-Control enthält keinen Graphviz-Code.
+- Surface-/Viewport-Größe wird aus Layoutbounds abgeleitet,
+- WPF-/Skia-Control enthält keinen Graphviz-Code.
 
 **Step-Gate:** visuelle Freigabe des Basisdesigns.
 
@@ -929,7 +965,7 @@ Graph-UI erhält danach nur einen neuen Render-Snapshot. Kein eigenes zweites Un
 **Abnahme:**
 
 - Klick im Tree zentriert den Graph,
-- Klick im Graph öffnet/selektiert den Tree-Pfad,
+- Klick im Graph selektiert/öffnet den Tree-Pfad, ohne implizit neu zu zentrieren,
 - Collapse nur bei Container-Gruppen,
 - überlappende Markierungsgruppen bleiben gleichzeitig auswählbar,
 - Rückkanten erzeugen keine Tree-Endlosschleife.
@@ -966,7 +1002,8 @@ Graph-UI erhält danach nur einen neuen Render-Snapshot. Kein eigenes zweites Un
 - Large-Test stabil,
 - keine WPF-/Native-Crashes,
 - Bereichsfluss bleibt die klarste Standardansicht,
-- Gesamtgraph ist als Diagnoseansicht brauchbar.
+- Gesamtgraph ist als Diagnoseansicht brauchbar,
+- Product Demo nutzt SkiaGraphSurface als aktive Graphfläche.
 
 **Step-Gate:** Entscheidung zur Extraktion/Übernahme in VIA.WPF.Graph.
 
@@ -995,13 +1032,14 @@ Graph-UI erhält danach nur einen neuen Render-Snapshot. Kein eigenes zweites Un
 
 ---
 
-### Phase 7 – UserFlow read-only Adapter und FlowView
 
-**Ziel:** Aktuelle UserFlow-Daten werden ohne Mutation visualisiert.
+### Spätere UserFlow-read-only-Integration – Adapter und FlowView
+
+**Ziel:** Aktuelle UserFlow-Daten werden ohne Mutation visualisiert. Diese Integrationsstufe ist durch Revision 6/7 nicht mehr die nächste Arbeitsphase, sondern folgt erst nach Library-Finalisierung, allgemeiner Demo-Abnahme, Dokumentation und Packaging.
 
 **Voraussetzungen:**
 
-- Phasen 0 bis 6 sind abgenommen.
+- Die allgemeinen Library-/Demo-/Dokumentationsphasen bis einschließlich Phase 9 sind abgenommen.
 - Der aktuelle UserFlow-VS2AI-Export liegt jetzt vor.
 - Die allgemeine `VIA.WPF.Graph`-Solution bleibt unverändert UserFlow-frei.
 - Der Adapter entsteht ausschließlich auf UserFlow-Seite und referenziert `VIA.WPF.Graph`; die umgekehrte Richtung ist verboten.
@@ -1125,16 +1163,19 @@ Mögliche Themen:
 - Wiederholung gleicher Daten ohne Geometry-Leaks,
 - konsistente DOT→WPF-Koordinaten bei Zoom, Fit und Hit-Test.
 
-### 13.3 WPF-Funktionstests
+### 13.3 WPF-/Skia-Funktionstests
 
 - Zoom/Pan/Fit,
+- Viewport-/Scrollbar-Verhalten,
 - Knoten-/Kantenauswahl,
+- Skia-Hit-Testing für Karten, Kanten und Gruppen,
 - Tree/Graph-Synchronisierung,
 - Search/Fokus,
 - Collapse/Expand,
 - Mehrfachgruppen-Auswahl,
 - Tastaturfokus und Accessibility-Basis,
-- Label-Ausblendung/Bündelung ohne Verlust der Link-Auswahl.
+- Label-Ausblendung/Bündelung ohne Verlust der Link-Auswahl,
+- Render-Layer-Reihenfolge: Gruppen, Linien, Karten, Pfeile/Labels/Overlays.
 
 ### 13.4 UserFlow-Integrationstests
 
@@ -1171,7 +1212,7 @@ Mögliche Themen:
 | ActionDefinition ohne stabile Id | Bearbeitung erst nach expliziter Datenmodellentscheidung |
 | `NavigateBack` ohne Ziel-ID | neutral darstellen oder Ziel nur aus aktivem Pfad ableiten |
 | überlappende Gruppen als Cluster | nur disjunkte Containergruppen clustern; Überlappungen markieren |
-| 150 Detailkarten auf einmal | Bereichs-/Fokusansichten als Standard, Compact-Modus im Vollgraph |
+| 150 Detailkarten auf einmal | Bereichs-/Fokusansichten als Standard, Scope-Policy und Compact-Modus im Vollgraph |
 | Graphviz-Layout ändert sich nach Datenänderung | Selection an stabile IDs binden, nicht an Koordinaten |
 | manueller Layoutwunsch zu früh | erst nach akzeptierter automatischer Darstellung separat planen |
 | UI-Control mutiert Fachmodell | ausschließlich Requests/Commands, keine Collection-Referenzen im Renderer |
@@ -1181,6 +1222,8 @@ Mögliche Themen:
 | Altprojekte brechen nach Modellergänzung | rückwärtskompatibler Default und definierte Migrationsregel |
 | ungruppierte Screens verschwinden aus Bereichsansichten | stabile synthetische Gruppe „Ohne Gruppe“ nur in der Projektion |
 | früherer Demo-Code wird als technische Baseline missverstanden | Demo nicht übergeben und nicht übernehmen; neue Solution entsteht ausschließlich nach diesem Plan |
+| Legacy-GraphCanvas bleibt nach Skia-Pivot als falsche Zielrichtung liegen | nicht weiter ausbauen; Entfernung/Archivierung nur nach eigenem API-Kompatibilitäts-Step-Gate |
+| Skia-Hit-Testing und WPF-ScrollViewer divergieren | ein zentraler Viewport-/Extent-Vertrag und Tests für Pan/Zoom/Scrollbar-Synchronisierung |
 
 ---
 
@@ -1192,7 +1235,7 @@ Mögliche Themen:
 4. **Bereichsmodell:** Werden Screen- und Popup-Gruppen getrennt geführt oder gibt es eine fachliche Zuordnung zwischen ihnen?
 5. **Persistenz des View-State:** Welche States sind pro Projekt zu speichern?
 6. **`VIA.WPF.Graph`-Struktur:** In welche bestehende Solution/Repository-Struktur werden `VIA.WPF.Graph.*`-Projekte aufgenommen?
-7. **Graphdesign:** Welche bestehenden `VIA.WPF.Graph`-/UserFlow-Styles, Brushes und Iconpacks sollen die neuen Templates verwenden?
+7. **Graphdesign:** Welche neutralen Product-Demo-Styles werden später in wiederverwendbare Skia-Renderer-Konfigurationen überführt?
 8. **Bearbeitung:** Darf die Graphansicht später neue ActionAreas anlegen oder zunächst nur bestehende Actions ändern?
 9. **Deployment:** Welche Runtime-Architektur wird offiziell unterstützt: `win-x64` nur oder zusätzlich andere Runtimes?
 10. **Bereichscollapse:** Soll ein kollabierter Bereich nur Übergangszahlen oder auch die wichtigsten ausgehenden Actionlabels zeigen?
@@ -1200,18 +1243,22 @@ Mögliche Themen:
 12. **Mehrfachkanten:** Sollen sie im Standardgraph als Einzellinien oder ab einer Dichte als Bündel mit Anzahl angezeigt werden?
 13. **Ungruppierte Screens:** Ist „Ohne Gruppe“ als reine Projektion fachlich akzeptiert?
 14. **Größenvertrag:** Welche festen Kartenmaße gelten je Template, bevor dynamische Größenmessung später zugelassen wird?
+15. **Legacy-GraphCanvas:** Entfernen, archivieren oder als Kompatibilitätscontrol behalten?
+16. **Scope-Policy:** Welche Defaults gelten für Node Focus, Branch, Group Compact, Group Full und Overview?
+17. **Link-Routing:** Wann nutzt die Ansicht Graphviz-Splines, gerade Linien, Polyline oder orthogonale Kurzrouten?
 
 ---
 
 ## 16. Empfohlene Reihenfolge der nächsten konkreten Schritte
 
-1. Phase 0 durchführen: die bestehende `VIA.WPF.Graph.slnx`, Rubjerg-Runtime und den neutralen Datenmodellrahmen prüfen; keine technische Alt-Demo übernehmen und keine Host-spezifischen Entscheidungen treffen.
-2. VIA.WPF.Graph.Core und VIA.WPF.Graph.Graphviz ohne UserFlow-Abhängigkeit aufbauen.
-3. WPF-Canvas und Navigation Path Tree im Demo-Projekt validieren.
-4. Den allgemeinen Hostvertrag für Requests und Capabilities abnehmen.
-5. Erst vor Phase 7 den aktuellen UserFlow-Export liefern und dort ActionDefinition-Identität, Altprojekt-Migration, Editor-Identitätserhalt und UserFlow-View-State verbindlich entscheiden.
-6. Erst danach die vorhandene `FlowView` read-only füllen.
-7. Bearbeitung und neue Navigation erst nach dem read-only Abnahmetest aktivieren.
+1. Aktuellen Skia-R7-Stand als offizielle Renderbasis dokumentieren und Product-Demo-Leichen bereinigen.
+2. Scope-Policy, Link-Noise, Link-Routing und Viewport/Scrollbars in der Product Demo stabilisieren.
+3. SkiaGraphSurface-API/Bindings prüfen und entscheiden, was generischer Library-Vertrag wird und was Demo-/Host-Policy bleibt.
+4. Legacy-GraphCanvas separat bewerten: behalten, archivieren oder nach Step-Gate entfernen.
+5. Den allgemeinen Hostvertrag für Requests und Capabilities auf Skia-Hit-Testing und Interaktionsoverlays anwenden.
+6. Erst vor UserFlow-read-only den aktuellen UserFlow-Export liefern und dort ActionDefinition-Identität, Altprojekt-Migration, Editor-Identitätserhalt und UserFlow-View-State verbindlich entscheiden.
+7. Erst danach die vorhandene `FlowView` read-only füllen.
+8. Bearbeitung und neue Navigation erst nach dem read-only Abnahmetest aktivieren.
 
 ---
 
@@ -1220,14 +1267,14 @@ Mögliche Themen:
 
 ### 17.1 Grundregel: Zwei getrennte Arbeitskontexte
 
-`VIA.WPF.Graph` ist eine allgemeine Library. Sie kennt weder UserFlow-Typen noch UserFlow-Projekte, Collections, ViewModels, JSON-Formate oder ActionAreas. Diese Trennung gilt nicht nur für den fertigen Code, sondern auch für die Entwicklungsphasen 0 bis 6.
+`VIA.WPF.Graph` ist eine allgemeine Library. Sie kennt weder UserFlow-Typen noch UserFlow-Projekte, Collections, ViewModels, JSON-Formate oder ActionAreas. Diese Trennung gilt nicht nur für den fertigen Code, sondern auch für die Entwicklungsphasen 0 bis 9.
 
 Deshalb wird die Informationsübergabe bewusst zweistufig durchgeführt:
 
 | Arbeitsstufe | Phasen | Benötigte Artefakte | Nicht mitgeben |
 |---|---:|---|---|
-| Allgemeine Graph-Library | 0–6 | nur `VIA.WPF.Graph_Masterplan.md` | UserFlow-Export, UserFlow-Zip, alte Graphviz-Demo, VIALib-Quellen |
-| UserFlow-Integration | ab 7 | Masterplan, aktueller Stand der neuen `VIA.WPF.Graph`-Solution, aktueller UserFlow-VS2AI-Export | alte Graphviz-Demo; veraltete UserFlow-Exporte |
+| Allgemeine Graph-Library | 0–9 | Masterplan und aktueller `VIA.WPF.Graph`-Quellstand | UserFlow-Export, UserFlow-Zip, alte Graphviz-Demo, VIALib-Quellen |
+| UserFlow-Integration | nach Phase 9 | Masterplan, aktueller Stand der neuen `VIA.WPF.Graph`-Solution, aktueller UserFlow-VS2AI-Export | alte Graphviz-Demo; veraltete UserFlow-Exporte |
 | spätere VIALib-Übernahme | nach produktiver UserFlow-Abnahme | zusätzlich aktueller VIALib-Export oder aktuelle VIALib-Solution | keine Annahmen über VIALib-Struktur |
 
 Der frühere `GraphvizWpfDemo.zip` wird nie als technische Baseline übergeben. Er war ein explorativer Vorversuch; die neue Solution entsteht von Grund auf nach diesem Plan.
@@ -1239,24 +1286,24 @@ Diesen Text **nur mit dem Masterplan** übergeben:
 ```text
 Arbeite ausschließlich nach VIA.WPF.Graph_Masterplan.md.
 
-Starte mit Phase 0 der allgemeinen VIA.WPF.Graph-Solution. UserFlow ist zu diesem Zeitpunkt ausdrücklich kein Eingabeartefakt und darf weder referenziert noch als implizites Datenmodell angenommen werden.
+Arbeite am aktuellen Skia-R7-Stand der allgemeinen VIA.WPF.Graph-Solution weiter. UserFlow ist zu diesem Zeitpunkt ausdrücklich kein Eingabeartefakt und darf weder referenziert noch als implizites Datenmodell angenommen werden.
 
 Wichtig:
 - Die neue VIA.WPF.Graph-Solution wird von Grund auf nach dem Masterplan aufgebaut.
 - Das frühere Graphviz-Demo-Projekt ist keine technische Baseline und wird nicht verwendet.
 - Verwende überall CommunityToolkit.Mvvm: ObservableObject, ObservableProperty, RelayCommand/AsyncRelayCommand; WeakReferenceMessenger nur für echte bereichsübergreifende Ereignisse.
 - VIA.WPF.Graph.Core darf keine WPF-, Graphviz-, UserFlow- oder Host-Abhängigkeit erhalten.
-- WPF-Controls rendern, hit-testen und erzeugen nur neutrale Requests; sie mutieren keine Host-Daten.
+- WPF-/Skia-Controls rendern, hit-testen und erzeugen nur neutrale Requests; sie mutieren keine Host-Daten.
 - Keine neuen Datenmodell-Properties, IDs, Projekte, Packages oder Architekturentscheidungen ohne vorheriges Step-Gate.
 - Jede Codeänderung nur auf Basis der aktuell bereitgestellten Dateien; komplette Dateien liefern, sofern kein Patch verlangt wird.
 - Nach jeder Phase: lokal bauen, relevante Tests ausführen, Ergebnis und offene Punkte berichten und auf Freigabe warten.
 
-Ziel von Phase 0: allgemeine Projektstruktur, echte Rubjerg.Graphviz-API/Runtime, Deployment und neutralen Datenmodellrahmen verifizieren. Erst danach mit Phase 1 fortfahren.
+Ziel der aktuellen Fortsetzung: SkiaGraphSurface, Scope-Policy, Viewport/Scrollbars, Link-Routing und Cleanup gemäß Phase 7 stabilisieren. Erst danach UserFlow-read-only vorbereiten.
 ```
 
 ### 17.3 Übergang in die UserFlow-Integration
 
-Erst nach Abschluss und Freigabe von Phase 6 wird ein **neuer Integrationskontext** eröffnet oder dem bestehenden Chat die folgenden Artefakte nachgereicht:
+Erst nach Abschluss und Freigabe von Phase 9 wird ein **neuer Integrationskontext** eröffnet oder dem bestehenden Chat die folgenden Artefakte nachgereicht:
 
 1. `VIA.WPF.Graph_Masterplan.md`.
 2. Der aktuelle Quellstand der bis dahin erstellten `VIA.WPF.Graph`-Solution.
@@ -1276,9 +1323,9 @@ Prüfe zuerst den aktuellen UserFlow-Export gegen die Integrationsannahmen des M
 ### 17.4 Reihenfolge der Informationsübergabe
 
 1. Für die allgemeine Library: ausschließlich den Masterplan und den Startauftrag aus Abschnitt 17.2 geben.
-2. Nach Phase 0 und jeder weiteren abgenommenen Phase: ausschließlich den aktuellen Quellstand der neuen `VIA.WPF.Graph`-Solution zusätzlich geben.
-3. Erst nach Phase-6-Abnahme: den aktuellen UserFlow-VS2AI-Export und den Auftrag aus Abschnitt 17.3 geben.
-4. Bei UserFlow-Änderungen vor oder während Phase 7: einen neuen Export bereitstellen, bevor der Adapter geändert wird.
+2. Nach jeder abgenommenen allgemeinen Library-/Demo-/Dokumentationsphase: ausschließlich den aktuellen Quellstand der neuen `VIA.WPF.Graph`-Solution zusätzlich geben.
+3. Erst nach Phase-9-Abnahme: den aktuellen UserFlow-VS2AI-Export und den Auftrag aus Abschnitt 17.3 geben.
+4. Bei UserFlow-Änderungen vor oder während der UserFlow-Integrationsphase: einen neuen Export bereitstellen, bevor der Adapter geändert wird.
 5. Bei einer späteren Übernahme in VIALib: aktuellen VIALib-Export geben und die Zielstruktur ausdrücklich freigeben.
 
 ### 17.5 Was der neue Chat nicht annehmen darf
@@ -1312,9 +1359,9 @@ Die erste produktive Stufe gilt als fertig, wenn:
 
 ---
 
-## 19. Revision 5 – Phase-7-Konkretisierung ohne Änderung der bisherigen Masterplan-Inhalte
+## 19. Historische Revision 5 – frühere UserFlow-Read-only-Konkretisierung
 
-Diese Revision ergänzt den bestehenden Masterplan ausschließlich um eine präzisere Schrittfolge für Phase 7. Alle vorherigen Abschnitte bleiben fachlich maßgeblich. Diese Ergänzung ersetzt keine bestehenden Architekturregeln, Abnahmebedingungen oder Step-Gates.
+Diese Revision bleibt als fachlicher Zielrahmen für die spätere UserFlow-read-only-Integration erhalten. Durch Revision 6 und Revision 7 ist sie jedoch nicht mehr die nächste Arbeitsphase. Die dort verwendeten P7-Bezeichnungen sind historische Bezeichnungen und dürfen für die aktuelle Skia-/Library-Finalisierung nicht als aktueller Arbeitsauftrag gelesen werden. Alle Architekturregeln, Abnahmebedingungen und Step-Gates bleiben fachlich maßgeblich.
 
 ### 19.1 Zweck von P7-001
 
@@ -1325,20 +1372,20 @@ Ziel von P7-001 ist, den read-only Rahmen für die erste UserFlow-Integration ve
 - Adapter ausschließlich auf UserFlow-Seite,
 - `VIA.WPF.Graph` bleibt unverändert UserFlow-frei,
 - UserFlow referenziert `VIA.WPF.Graph.Core`, `VIA.WPF.Graph.Graphviz` und `VIA.WPF.Graph.Wpf`, niemals umgekehrt,
-- keine neue `ActionDefinition.Id` in Phase 7,
-- keine JSON-, Clone-, Snapshot- oder Altprojekt-Migration in Phase 7,
-- keine Änderung am bestehenden ActionArea-Editor in Phase 7,
-- keine Action-Bearbeitung und keine neue Navigation in Phase 7,
+- keine neue `ActionDefinition.Id` in dieser späteren UserFlow-read-only-Stufe,
+- keine JSON-, Clone-, Snapshot- oder Altprojekt-Migration in dieser späteren UserFlow-read-only-Stufe,
+- keine Änderung am bestehenden ActionArea-Editor in dieser späteren UserFlow-read-only-Stufe,
+- keine Action-Bearbeitung und keine neue Navigation in dieser späteren UserFlow-read-only-Stufe,
 - `NavigateBack` wird read-only zunächst neutral als Rücknavigation dargestellt; ein konkretes Ziel darf nur angezeigt werden, wenn es aus dem aktuell sichtbaren Pfad eindeutig ableitbar ist,
 - alle UserFlow-Daten bleiben Single Source of Truth in den bestehenden Collections.
 
-### 19.2 Vorgeschlagene Teilissues für Phase 7
+### 19.2 Historische Teilissues für die spätere UserFlow-read-only-Integration
 
 #### P7-001 – Integrationsentscheid und Schnitt festlegen
 
 Umfang:
 
-- aktuellen Masterplan, aktuellen `VIA.WPF.Graph`-Stand und aktuellen UserFlow-Export gegen Phase 7 prüfen,
+- aktuellen Masterplan, aktuellen `VIA.WPF.Graph`-Stand und aktuellen UserFlow-Export gegen die spätere UserFlow-read-only-Stufe prüfen,
 - konkreten Adapterort in der UserFlow-Solution benennen,
 - erlaubte Projektverweise festlegen,
 - read-only Capability-Profil festlegen,
@@ -1409,7 +1456,7 @@ Step-Gate:
 Umfang:
 
 - bestehende `FlowView` wird als Integrationspunkt genutzt,
-- links `GraphNavigationPathTree`, rechts `GraphCanvas`,
+- links `GraphNavigationPathTree`, rechts `SkiaGraphSurface`,
 - beide Controls binden ausschließlich an hostseitigen Zustand,
 - Zoom, Pan, Fit, Auswahl, aktiver Bereich und Tree-Expand-Zustand bleiben im Flow-Host-ViewModel,
 - Viewwechsel darf den Graphzustand nicht zerstören.
@@ -1418,7 +1465,7 @@ Nicht enthalten:
 
 - kein neuer allgemeiner Graph-Renderer,
 - keine UserFlow-Typen in `VIA.WPF.Graph.Wpf`,
-- keine direkte Mutation aus Tree oder GraphCanvas.
+- keine direkte Mutation aus Tree oder SkiaGraphSurface.
 
 Step-Gate:
 
@@ -1460,7 +1507,7 @@ Step-Gate:
 
 - fachliche Freigabe der read-only UserFlow-Navigationsansicht. Erst danach darf Phase 8 geplant werden.
 
-### 19.3 Stopppunkte innerhalb Phase 7
+### 19.3 Stopppunkte innerhalb der späteren UserFlow-read-only-Integration
 
 Vor Umsetzung ist ausdrücklich anzuhalten, wenn einer der folgenden Punkte notwendig erscheint:
 
@@ -1474,9 +1521,9 @@ Vor Umsetzung ist ausdrücklich anzuhalten, wenn einer der folgenden Punkte notw
 - Änderung an `VIA.WPF.Graph.Core`, `.Graphviz` oder `.Wpf` wegen UserFlow,
 - direkte Mutation von `Project.Screens`, `Project.Popups`, `ActionArea.Actions` oder `ActionDefinition` aus Graph oder Tree.
 
-### 19.4 Phase-7-Nichtziele
+### 19.4 Nichtziele der späteren UserFlow-read-only-Integration
 
-Nicht Bestandteil der read-only Phase 7:
+Nicht Bestandteil der read-only diese spätere UserFlow-read-only-Stufe:
 
 - bestehende Actions öffnen, ändern oder löschen,
 - neue Navigation anlegen,
@@ -1491,7 +1538,7 @@ Nicht Bestandteil der read-only Phase 7:
 
 ### 19.5 Verhältnis zu Phase 8 und Phase 9
 
-Phase 7 liefert nur die read-only Navigationsansicht. Erst nach ihrer Abnahme werden Phase 8 und Phase 9 betrachtet.
+Die spätere UserFlow-read-only-Integration liefert nur die read-only Navigationsansicht. Erst nach ihrer Abnahme werden UserFlow-Bearbeitung und neue Navigation betrachtet.
 
 Phase 8 benötigt vor Code weiterhin gesonderte Entscheidungen zu:
 
@@ -1511,11 +1558,11 @@ Phase 9 bleibt weiterhin die spätere Stufe für neue Navigation aus Graph oder 
 
 ## 20.1 Anlass
 
-Nach Abschluss der allgemeinen Library-Phasen 0 bis 6 wird die UserFlow-Integration bewusst ans Ende verschoben.
+Nach Abschluss der allgemeinen Library-Phasen 0 bis 6 wurde die UserFlow-Integration bewusst ans Ende verschoben. Der Skia-R7-Stand konkretisiert nun die technische Renderbasis für die Library-Finalisierung.
 
 Begründung:
 
-- `VIA.WPF.Graph` soll zuerst als vollständig autarke, allgemeine WPF-Graph-Library finalisiert werden.
+- `VIA.WPF.Graph` soll zuerst als vollständig autarke, allgemeine WPF-/Skia-Graph-Library finalisiert werden.
 - UserFlow darf die Library-Architektur nicht zu früh prägen.
 - Die Library soll vor der ersten Domänenintegration API-, Host-, Demo-, Dokumentations- und Packaging-reif sein.
 - Das GitHub Project Board ist nicht mehr verbindliche Steuerung. Der Masterplan bleibt Single Source of Truth.
@@ -1526,8 +1573,8 @@ Diese Revision ersetzt nicht den bisherigen Masterplantext, sondern legt ab jetz
 
 | Neue Phase | Titel | Inhalt |
 |---|---|---|
-| Phase 7 | Library-Finalisierung und Host-Integrationsreife | Öffentliche API, Hostvertrag, Request-/Result-Verhalten, View-State-Bindings, allgemeine Synchronisierung und Host-Neutralität härten. |
-| Phase 8 | Allgemeine UX-/Demo-Abnahme | Allgemeine Demo ohne UserFlow verbessern, Hybridansicht absichern, Navigation, Fokus, Zoom/Pan, Tree+Graph-Verhalten und größere Demo-Abnahme finalisieren. |
+| Phase 7 | Library-Finalisierung und Host-Integrationsreife | SkiaGraphSurface als aktive Renderbasis, öffentliche API, Hostvertrag, Request-/Result-Verhalten, View-State-Bindings, Scope-Policy, allgemeine Synchronisierung und Host-Neutralität härten. |
+| Phase 8 | Allgemeine UX-/Demo-Abnahme | Product Demo ohne UserFlow verbessern, Skia-Hybridansicht absichern, Navigation, Fokus, Zoom/Pan/Scrollbars, Tree+Graph-Verhalten und größere Demo-Abnahme finalisieren. |
 | Phase 9 | Dokumentation, Packaging und Host-Onboarding | Integrationsdokumentation, Paket-/Referenzstruktur, Host-Beispiele, Übergabehinweise und Release-Vorbereitung erstellen. |
 | Phase 10 | UserFlow read-only Adapter und FlowView | Bisherige UserFlow-read-only-Phase. Visualisierung aktueller UserFlow-Daten ohne Mutation. |
 | Phase 11 | UserFlow-Bearbeitung bestehender Actions | Bisherige Phase zur Bearbeitung vorhandener UserFlow-Actions. |
@@ -1536,21 +1583,21 @@ Diese Revision ersetzt nicht den bisherigen Masterplantext, sondern legt ab jetz
 
 ## 20.3 Neue Phase 7 – Library-Finalisierung und Host-Integrationsreife
 
-### P7-001 – Masterplan auf Library-first-Reihenfolge umstellen
+### P7-001 – Masterplan auf Library-first- und Skia-Reihenfolge umstellen
 
 Ziel:
 
 - Masterplan verbindlich auf Library-first-Reihenfolge umstellen.
+- SkiaGraphSurface als aktive Renderbasis dokumentieren.
 - GitHub Project Board aus der verbindlichen Steuerung entfernen.
 - UserFlow an das Ende verschieben.
-- Keine Codeänderung.
 
 Abnahme:
 
-- Masterplan enthält Revision 6.
+- Masterplan enthält Revision 7.
 - Frühere Inhalte bleiben erhalten.
-- Neue Reihenfolge ist eindeutig.
-- Keine Implementierung erfolgt in P7-001.
+- Neue Reihenfolge und Skia-Rolle sind eindeutig.
+- Codeänderungen beschränken sich auf bereinigende Demo-/Dokumentationsanpassungen.
 
 ### P7-002 – Public API und Hostvertrag prüfen
 
@@ -1568,20 +1615,22 @@ Abnahme:
 - Mutationsgrenze bleibt beim Host.
 - Keine domänenspezifischen Typen in der Library.
 
-### P7-003 – GraphCanvas/View-State-Bindings härten
+### P7-003 – SkiaGraphSurface/View-State-Bindings härten
 
 Ziel:
 
-- Allgemeine Bindings für Zoom, Pan, Auswahl, Gruppen, ViewMode und RequestCommand prüfen.
+- Allgemeine Bindings für Zoom, Pan, Auswahl, Gruppen, ViewMode, LayoutBounds und RequestCommand prüfen.
 - Rebuild-Stabilität allgemein absichern.
 - View-State weiterhin host-owned halten.
+- Scope-Policy und Viewport/Scrollbar-Verhalten von Persistenz und Hostmodell trennen.
 - Keine projektspezifische Persistenz einführen.
 
 Abnahme:
 
-- GraphCanvas bleibt hostneutral.
+- SkiaGraphSurface bleibt hostneutral.
 - View-State kann vom Host gehalten und wieder angebunden werden.
 - Keine Spiegelkopien oder verdeckte Synchronisationslisten entstehen.
+- Legacy-GraphCanvas wird nicht weiter optisch ausgebaut.
 
 ### P7-004 – NavigationPathTree/Graph-Sync allgemein absichern
 
@@ -1597,18 +1646,20 @@ Abnahme:
 - Kein Hostmodell wird direkt mutiert.
 - Zyklische Graphen bleiben sicher darstellbar.
 
-### P7-005 – Demo-Host als allgemeine Referenz verbessern
+### P7-005 – Product Demo als allgemeine Skia-Referenz verbessern
 
 Ziel:
 
-- Demo-Host als allgemeine Referenz für spätere Hosts verbessern.
-- Read-only/editable-Modus, Requestfeedback, Hybridansicht und allgemeine Testdaten klar darstellen.
+- Product Demo als allgemeine Referenz für spätere Hosts verbessern.
+- Read-only/editable-Modus, Requestfeedback, Hybridansicht, Skia-Scopes und allgemeine Testdaten klar darstellen.
 - Keine UserFlow-Daten verwenden.
+- Link-Routing, Link-Noise, Gruppenflächen und Kartenlayout weiter stabilisieren.
 
 Abnahme:
 
 - Demo zeigt typische Host-Integration ohne Domäne.
 - Demo erklärt die Grenzen zwischen Library und Host.
+- Skia-Graphfläche ist die aktive Product-Demo-GraphArea.
 - Allgemeine UX ist belastbar genug für spätere Integration.
 
 ### P7-006 – Phase-7-Abnahme: Build, Tests, Host-Neutralität
@@ -1624,7 +1675,7 @@ Abnahme:
 
 - `dotnet test` ist erfolgreich.
 - Keine neuen UserFlow-Abhängigkeiten existieren.
-- Öffentliche API und Demo sind konsistent.
+- Öffentliche API, SkiaGraphSurface und Demo sind konsistent.
 - Phase 8 wird erst nach ausdrücklicher Freigabe gestartet.
 
 ## 20.4 Verbindliche Nicht-Ziele bis einschließlich Phase 9

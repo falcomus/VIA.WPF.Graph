@@ -1,15 +1,13 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:viewModels="clr-namespace:VIA.WPF.Graph.Demo.ViewModels">
-  <Color x:Key="ProductDemo.PageBackgroundColor">#EEF3F8</Color>
+  <Color x:Key="ProductDemo.PageBackgroundColor">#F3F5F7</Color>
   <Color x:Key="ProductDemo.CardBackgroundColor">#FFFFFFFF</Color>
   <Color x:Key="ProductDemo.CardBorderColor">#FFD8E4EF</Color>
-  <Color x:Key="ProductDemo.PanelBackgroundColor">#FFF8FBFE</Color>
+  <Color x:Key="ProductDemo.PanelBackgroundColor">#FFF8FAFC</Color>
   <Color x:Key="ProductDemo.MutedTextColor">#FF607386</Color>
   <Color x:Key="ProductDemo.TitleTextColor">#FF172435</Color>
   <Color x:Key="ProductDemo.AccentColor">#FF1E5A96</Color>
-  <Color x:Key="ProductDemo.AccentSoftColor">#FFEAF2FA</Color>
-  <Color x:Key="ProductDemo.TreeLineColor">#FFB9CAD9</Color>
 
   <SolidColorBrush x:Key="PageBackgroundBrush"
                    Color="{StaticResource ProductDemo.PageBackgroundColor}" />
@@ -25,23 +23,12 @@
                    Color="{StaticResource ProductDemo.TitleTextColor}" />
   <SolidColorBrush x:Key="AccentBrush"
                    Color="{StaticResource ProductDemo.AccentColor}" />
-  <SolidColorBrush x:Key="AccentSoftBrush"
-                   Color="{StaticResource ProductDemo.AccentSoftColor}" />
-  <SolidColorBrush x:Key="TreeLineBrush"
-                   Color="{StaticResource ProductDemo.TreeLineColor}" />
 
   <DropShadowEffect x:Key="ProductDemo.CardShadow"
                     BlurRadius="18"
                     Direction="270"
                     Opacity="0.13"
                     ShadowDepth="4"
-                    Color="#FF2C4054" />
-
-  <DropShadowEffect x:Key="ProductDemo.TreeGroupShadow"
-                    BlurRadius="10"
-                    Direction="270"
-                    Opacity="0.14"
-                    ShadowDepth="2"
                     Color="#FF2C4054" />
 
   <DropShadowEffect x:Key="ProductDemo.SelectedTreeItemShadow"
@@ -190,10 +177,6 @@
     <Setter Property="ScrollViewer.VerticalScrollBarVisibility"
             Value="Auto" />
   </Style>
-
-
-
-  <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
   <Style x:Key="ProductNavigationExpanderToggleStyle"
          TargetType="{x:Type ToggleButton}">

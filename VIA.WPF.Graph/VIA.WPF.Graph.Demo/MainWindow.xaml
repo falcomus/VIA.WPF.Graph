@@ -152,8 +152,8 @@
 
             <Border DockPanel.Dock="Right"
                     Padding="10,6"
-                    Background="#FFF4F8FC"
-                    BorderBrush="#FFD4E0EB"
+                    Background="#FFF7F9FB"
+                    BorderBrush="#FFD6DFE8"
                     BorderThickness="1"
                     CornerRadius="8">
               <TextBlock FontWeight="SemiBold"
@@ -162,11 +162,11 @@
             </Border>
           </DockPanel>
 
-          <Border x:Name="GraphCanvasHost"
+          <Border x:Name="GraphSurfaceHost"
                   Grid.Row="1"
                   ClipToBounds="True"
-                  Background="#FFF4F8FC"
-                  BorderBrush="#FFD4E0EB"
+                  Background="#FFF4F6F8"
+                  BorderBrush="#FFD6DFE8"
                   BorderThickness="1"
                   CornerRadius="8">
             <Grid>
@@ -179,7 +179,7 @@
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
 
-              <graphControls:SkiaGraphSurface x:Name="GraphCanvasView"
+              <graphControls:SkiaGraphSurface x:Name="GraphSurfaceView"
                                              Grid.Row="0"
                                              Grid.Column="0"
                                              HorizontalAlignment="Stretch"
@@ -224,7 +224,7 @@
                       Width="13"
                       Height="13"
                       Margin="0,0,2,2"
-                      Background="#FFE6EFF7"
+                      Background="#FFE7ECF1"
                       Visibility="Collapsed" />
             </Grid>
           </Border>
