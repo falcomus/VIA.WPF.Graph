@@ -22,6 +22,16 @@ public partial class UIXDemoViewModel : ObservableObject
     private GraphLayoutResult currentLayout;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentScopeText))]
+    [NotifyPropertyChangedFor(nameof(ModeText))]
+    [NotifyPropertyChangedFor(nameof(FooterText))]
+    private GraphDocument visibleDocument;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FooterText))]
+    private GraphLayoutResult visibleLayout;
+
+    [ObservableProperty]
     private GraphTreeProjection treeProjection;
 
     public IReadOnlyList<ProductNavigationTreeItem> NavigationGroups { get; }
@@ -104,6 +114,8 @@ public partial class UIXDemoViewModel : ObservableObject
         CurrentLayout = GraphvizLayoutEngine.Layout(
             CurrentDocument,
             new GraphLayoutOptions(GraphLayoutDirection.LeftToRight, GraphEdgeRoutingStyle.Spline));
+        VisibleDocument = CurrentDocument;
+        VisibleLayout = CurrentLayout;
 
         TreeProjection = GraphTreeProjectionBuilder.Build(CurrentDocument, rootNodeId: "splash");
         NavigationGroups = CreateNavigationGroups();
@@ -111,6 +123,7 @@ public partial class UIXDemoViewModel : ObservableObject
         SelectedNodeIds = ["splash"];
         SelectedNodeId = "splash";
         FocusedNodeId = "splash";
+        RebuildVisibleGraph();
         RequestFit();
     }
 
@@ -122,20 +135,28 @@ public partial class UIXDemoViewModel : ObservableObject
 
     public string DensityButtonText => VisualDensity < 1d ? "Comfort" : "Compact";
 
-    public string CurrentScopeText => ActiveViewMode switch
+    public string CurrentScopeText
     {
-        GraphViewMode.GroupOverview => "Areas",
-        GraphViewMode.Focus => "Focus",
-        GraphViewMode.Overview => "Branch",
-        _ => "Diagnostic"
-    };
+        get
+        {
+            string scopeName = ActiveViewMode switch
+            {
+                GraphViewMode.GroupOverview => GetSelectedAreaTitle(),
+                GraphViewMode.Focus => "Focus",
+                GraphViewMode.Overview => "Branch",
+                _ => "Diagnostic"
+            };
+
+            return $"{scopeName} · {VisibleDocument.Nodes.Count} cards · {VisibleDocument.Links.Count} links";
+        }
+    }
 
     public string ModeText => ActiveViewMode switch
     {
-        GraphViewMode.GroupOverview => "Area view shows the app sections and their transitions.",
-        GraphViewMode.Focus => "Focus view emphasizes the selected screen and its direct navigation context.",
-        GraphViewMode.Overview => "Branch view shows the complete demo navigation with the selected path highlighted.",
-        _ => "Diagnostic view shows the complete technical graph structure."
+        GraphViewMode.GroupOverview => "Area view shows the selected screen area and its boundary transitions.",
+        GraphViewMode.Focus => "Focus view shows the selected screen and its direct navigation context.",
+        GraphViewMode.Overview => "Branch view expands the selected screen into a readable local branch.",
+        _ => "Diagnostic view shows the current scoped technical graph structure."
     };
 
     public string SelectedScreenTitle
@@ -198,23 +219,42 @@ public partial class UIXDemoViewModel : ObservableObject
             return;
         }
 
+        if (!treeItem.IsGroup
+            && !string.IsNullOrWhiteSpace(treeItem.NodeId)
+            && StringComparer.Ordinal.Equals(treeItem.TreeItemId, SelectedTreeNodeId)
+            && StringComparer.Ordinal.Equals(treeItem.NodeId, SelectedNodeId)
+            && SelectedNodeIds.Contains(treeItem.NodeId, StringComparer.Ordinal))
+        {
+            return;
+        }
+
         SelectedTreeNodeId = treeItem.TreeItemId;
+
+        if (treeItem.IsGroup)
+        {
+            SelectGroupTreeItem(treeItem);
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(treeItem.NodeId))
         {
             return;
         }
 
-        SelectNode(treeItem.NodeId, centerAfterSelection: true);
+        SelectNode(treeItem.NodeId, centerAfterSelection: false);
         SelectedLinkId = treeItem.LinkId;
+        RebuildVisibleGraph();
+        RequestFit();
     }
 
     [RelayCommand]
     private void ShowAreaOverview()
     {
         ActiveViewMode = GraphViewMode.GroupOverview;
-        FocusedNodeId = null;
+        FocusedNodeId = SelectedNodeIds.FirstOrDefault() ?? "splash";
+        FocusedGroupId = GetContainerGroupIdOrNull(FocusedNodeId);
         IsFreeNavigationEnabled = false;
+        RebuildVisibleGraph();
         RequestFit();
     }
 
@@ -222,8 +262,10 @@ public partial class UIXDemoViewModel : ObservableObject
     private void ShowGraphOverview()
     {
         ActiveViewMode = GraphViewMode.Overview;
-        FocusedNodeId = SelectedNodeIds.FirstOrDefault();
+        FocusedNodeId = SelectedNodeIds.FirstOrDefault() ?? "splash";
+        FocusedGroupId = null;
         IsFreeNavigationEnabled = false;
+        RebuildVisibleGraph();
         RequestFit();
     }
 
@@ -232,8 +274,10 @@ public partial class UIXDemoViewModel : ObservableObject
     {
         ActiveViewMode = GraphViewMode.Focus;
         FocusedNodeId = SelectedNodeIds.FirstOrDefault() ?? "splash";
+        FocusedGroupId = null;
         IsFreeNavigationEnabled = false;
-        RequestCenter();
+        RebuildVisibleGraph();
+        RequestFit();
     }
 
     [RelayCommand]
@@ -273,15 +317,15 @@ public partial class UIXDemoViewModel : ObservableObject
         switch (request.Kind)
         {
             case GraphRequestKind.SelectNode:
-            case GraphRequestKind.OpenNode:
-                SelectNode(request.NodeId, centerAfterSelection: true);
-                if (request.Kind == GraphRequestKind.OpenNode)
-                {
-                    ActiveViewMode = GraphViewMode.Focus;
-                    FocusedNodeId = request.NodeId;
-                    RequestCenter();
-                }
+                SelectVisibleNode(request.NodeId);
+                break;
 
+            case GraphRequestKind.OpenNode:
+                SelectNode(request.NodeId, centerAfterSelection: false);
+                ActiveViewMode = GraphViewMode.Focus;
+                FocusedNodeId = request.NodeId;
+                RebuildVisibleGraph();
+                RequestFit();
                 break;
 
             case GraphRequestKind.SelectLink:
@@ -292,17 +336,39 @@ public partial class UIXDemoViewModel : ObservableObject
             case GraphRequestKind.ClearSelection:
                 SelectedNodeIds = Array.Empty<string>();
                 SelectedLinkIds = Array.Empty<string>();
+                SelectedGroupIds = Array.Empty<string>();
                 SelectedNodeId = null;
                 SelectedLinkId = null;
                 FocusedNodeId = null;
+                FocusedGroupId = null;
+                SelectedTreeNodeId = null;
+                ClearNavigationTreeSelection(NavigationGroups);
                 break;
 
             case GraphRequestKind.ReturnToOverview:
                 ActiveViewMode = GraphViewMode.Overview;
-                FocusedNodeId = null;
+                FocusedNodeId = SelectedNodeIds.FirstOrDefault() ?? "splash";
+                FocusedGroupId = null;
+                RebuildVisibleGraph();
                 RequestFit();
                 break;
         }
+    }
+
+    private void SelectVisibleNode(string? nodeId)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            return;
+        }
+
+        SelectedNodeIds = [nodeId];
+        SelectedLinkIds = Array.Empty<string>();
+        SelectedGroupIds = Array.Empty<string>();
+        SelectedNodeId = nodeId;
+        SelectedLinkId = null;
+        FocusedNodeId = nodeId;
+        SelectNavigationTreeNode(nodeId);
     }
 
     private void SelectNode(string? nodeId, bool centerAfterSelection)
@@ -314,14 +380,22 @@ public partial class UIXDemoViewModel : ObservableObject
 
         SelectedNodeIds = [nodeId];
         SelectedLinkIds = Array.Empty<string>();
+        SelectedGroupIds = Array.Empty<string>();
         SelectedNodeId = nodeId;
         SelectedLinkId = null;
         FocusedNodeId = nodeId;
 
-        if (ActiveViewMode != GraphViewMode.GroupOverview)
+        if (ActiveViewMode == GraphViewMode.GroupOverview)
+        {
+            FocusedGroupId = GetContainerGroupIdOrNull(nodeId);
+        }
+        else
         {
             ActiveViewMode = GraphViewMode.Focus;
+            FocusedGroupId = null;
         }
+
+        RebuildVisibleGraph();
 
         if (centerAfterSelection)
         {
@@ -339,6 +413,89 @@ public partial class UIXDemoViewModel : ObservableObject
         SelectedNodeIds = Array.Empty<string>();
         SelectedLinkIds = [linkId];
         SelectedLinkId = linkId;
+        RebuildVisibleGraph();
+    }
+
+    private void SelectNavigationTreeNode(string nodeId)
+    {
+        ProductNavigationTreeItem? treeItem = FindPreferredNavigationTreeItem(nodeId);
+        if (treeItem is null)
+        {
+            return;
+        }
+
+        ClearNavigationTreeSelection(NavigationGroups);
+        ExpandNavigationTreeAncestors(NavigationGroups, treeItem.TreeItemId);
+        SelectedTreeNodeId = treeItem.TreeItemId;
+        treeItem.IsSelected = true;
+    }
+
+    private ProductNavigationTreeItem? FindPreferredNavigationTreeItem(string nodeId)
+    {
+        ProductNavigationTreeItem? fallbackReferenceItem = null;
+
+        foreach (ProductNavigationTreeItem item in EnumerateNavigationTreeItems(NavigationGroups))
+        {
+            if (!StringComparer.Ordinal.Equals(item.NodeId, nodeId))
+            {
+                continue;
+            }
+
+            if (!item.IsReference)
+            {
+                return item;
+            }
+
+            fallbackReferenceItem ??= item;
+        }
+
+        return fallbackReferenceItem;
+    }
+
+    private static IEnumerable<ProductNavigationTreeItem> EnumerateNavigationTreeItems(IEnumerable<ProductNavigationTreeItem> items)
+    {
+        foreach (ProductNavigationTreeItem item in items)
+        {
+            yield return item;
+
+            foreach (ProductNavigationTreeItem child in EnumerateNavigationTreeItems(item.Children))
+            {
+                yield return child;
+            }
+        }
+    }
+
+    private static void ClearNavigationTreeSelection(IEnumerable<ProductNavigationTreeItem> items)
+    {
+        foreach (ProductNavigationTreeItem item in items)
+        {
+            item.IsSelected = false;
+            ClearNavigationTreeSelection(item.Children);
+        }
+    }
+
+    private static bool ExpandNavigationTreeAncestors(IEnumerable<ProductNavigationTreeItem> items, string treeItemId)
+    {
+        foreach (ProductNavigationTreeItem item in items)
+        {
+            if (StringComparer.Ordinal.Equals(item.TreeItemId, treeItemId))
+            {
+                return true;
+            }
+
+            if (ExpandNavigationTreeAncestors(item.Children, treeItemId))
+            {
+                item.IsExpanded = true;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    partial void OnActiveViewModeChanged(GraphViewMode value)
+    {
+        RebuildVisibleGraph();
     }
 
     partial void OnSelectedNodeIdChanged(string? value)
@@ -355,6 +512,285 @@ public partial class UIXDemoViewModel : ObservableObject
         {
             SelectedLinkIds = [value];
         }
+    }
+
+    private void SelectGroupTreeItem(ProductNavigationTreeItem treeItem)
+    {
+        string? groupId = ResolveContainerGroupIdFromTreeItem(treeItem);
+        if (string.IsNullOrWhiteSpace(groupId))
+        {
+            return;
+        }
+
+        string? firstNodeId = CurrentDocument.Nodes
+            .FirstOrDefault(node => node.GroupMemberships.Contains(groupId, StringComparer.Ordinal))
+            ?.Id;
+
+        SelectedGroupIds = [groupId];
+        FocusedGroupId = groupId;
+        if (!string.IsNullOrWhiteSpace(firstNodeId))
+        {
+            SelectedNodeIds = [firstNodeId];
+            SelectedNodeId = firstNodeId;
+            FocusedNodeId = firstNodeId;
+        }
+
+        SelectedLinkIds = Array.Empty<string>();
+        SelectedLinkId = null;
+        ActiveViewMode = GraphViewMode.GroupOverview;
+        IsFreeNavigationEnabled = false;
+        RebuildVisibleGraph();
+        RequestFit();
+    }
+
+    private void RebuildVisibleGraph()
+    {
+        string selectedNodeId = ResolveSelectedNodeId();
+        GraphDocument scopedDocument = CreateScopedDocument(selectedNodeId);
+        VisibleDocument = scopedDocument;
+        VisibleLayout = GraphvizLayoutEngine.Layout(
+            scopedDocument,
+            new GraphLayoutOptions(GraphLayoutDirection.LeftToRight, GraphEdgeRoutingStyle.Spline));
+    }
+
+    private GraphDocument CreateScopedDocument(string selectedNodeId)
+    {
+        HashSet<string> nodeIds = ActiveViewMode switch
+        {
+            GraphViewMode.GroupOverview => ResolveAreaScopeNodeIds(selectedNodeId),
+            GraphViewMode.Overview => ResolveBranchScopeNodeIds(selectedNodeId),
+            _ => ResolveFocusScopeNodeIds(selectedNodeId),
+        };
+
+        IncludeSelectedLinkEndpoints(nodeIds);
+        return CreateDocumentFromNodeIds(nodeIds, selectedNodeId);
+    }
+
+    private HashSet<string> ResolveFocusScopeNodeIds(string selectedNodeId)
+    {
+        HashSet<string> nodeIds = new(StringComparer.Ordinal)
+        {
+            selectedNodeId
+        };
+
+        foreach (GraphLink link in CurrentDocument.Links.Where(link => IsDirectLink(link, selectedNodeId) && IsQuietNavigationLink(link)))
+        {
+            nodeIds.Add(link.SourceNodeId);
+            nodeIds.Add(link.TargetNodeId);
+        }
+
+        return nodeIds;
+    }
+
+    private HashSet<string> ResolveBranchScopeNodeIds(string selectedNodeId)
+    {
+        HashSet<string> nodeIds = ResolveFocusScopeNodeIds(selectedNodeId);
+        string[] firstHopNodeIds = nodeIds.ToArray();
+
+        foreach (string nodeId in firstHopNodeIds)
+        {
+            foreach (GraphLink link in CurrentDocument.Links.Where(link => IsForwardBranchLink(link, nodeId)))
+            {
+                nodeIds.Add(link.SourceNodeId);
+                nodeIds.Add(link.TargetNodeId);
+                if (nodeIds.Count >= 22)
+                {
+                    return nodeIds;
+                }
+            }
+        }
+
+        return nodeIds;
+    }
+
+    private HashSet<string> ResolveAreaScopeNodeIds(string selectedNodeId)
+    {
+        HashSet<string> nodeIds = new(StringComparer.Ordinal);
+        string? containerGroupId = FocusedGroupId ?? GetContainerGroupIdOrNull(selectedNodeId);
+        if (string.IsNullOrWhiteSpace(containerGroupId))
+        {
+            return ResolveFocusScopeNodeIds(selectedNodeId);
+        }
+
+        foreach (GraphNode node in CurrentDocument.Nodes.Where(node => node.GroupMemberships.Contains(containerGroupId, StringComparer.Ordinal)))
+        {
+            nodeIds.Add(node.Id);
+        }
+
+        string[] areaNodeIds = nodeIds.ToArray();
+        foreach (GraphLink link in CurrentDocument.Links)
+        {
+            bool sourceInArea = areaNodeIds.Contains(link.SourceNodeId, StringComparer.Ordinal);
+            bool targetInArea = areaNodeIds.Contains(link.TargetNodeId, StringComparer.Ordinal);
+            if ((sourceInArea || targetInArea) && IsQuietNavigationLink(link))
+            {
+                nodeIds.Add(link.SourceNodeId);
+                nodeIds.Add(link.TargetNodeId);
+            }
+        }
+
+        return nodeIds;
+    }
+
+    private GraphDocument CreateDocumentFromNodeIds(HashSet<string> nodeIds, string selectedNodeId)
+    {
+        if (nodeIds.Count == 0)
+        {
+            nodeIds.Add(selectedNodeId);
+        }
+
+        GraphNode[] nodes = CurrentDocument.Nodes
+            .Where(node => nodeIds.Contains(node.Id))
+            .ToArray();
+
+        GraphLink[] links = CurrentDocument.Links
+            .Where(link => ShouldIncludeScopedLink(link, nodeIds, selectedNodeId))
+            .ToArray();
+
+        GraphGroup[] groups = ResolveScopedGroups(selectedNodeId);
+
+        string scopeId = ActiveViewMode switch
+        {
+            GraphViewMode.GroupOverview => $"area-{FocusedGroupId ?? GetContainerGroupIdOrNull(selectedNodeId) ?? selectedNodeId}",
+            GraphViewMode.Overview => $"branch-{selectedNodeId}",
+            _ => $"focus-{selectedNodeId}"
+        };
+
+        return new GraphDocument(
+            $"{CurrentDocument.Id}-{scopeId}",
+            nodes,
+            links,
+            CurrentDocument.Metadata,
+            groups);
+    }
+
+    private GraphGroup[] ResolveScopedGroups(string selectedNodeId)
+    {
+        string? containerGroupId = ActiveViewMode == GraphViewMode.GroupOverview
+            ? FocusedGroupId ?? GetContainerGroupIdOrNull(selectedNodeId)
+            : GetContainerGroupIdOrNull(selectedNodeId);
+
+        if (string.IsNullOrWhiteSpace(containerGroupId))
+        {
+            return [];
+        }
+
+        return CurrentDocument.Groups
+            .Where(group => group.Kind == GraphGroupKind.Container && StringComparer.Ordinal.Equals(group.Id, containerGroupId))
+            .ToArray();
+    }
+
+    private void IncludeSelectedLinkEndpoints(HashSet<string> nodeIds)
+    {
+        string? selectedLinkId = SelectedLinkIds.FirstOrDefault() ?? SelectedLinkId;
+        if (string.IsNullOrWhiteSpace(selectedLinkId))
+        {
+            return;
+        }
+
+        GraphLink? selectedLink = CurrentDocument.Links.FirstOrDefault(link => StringComparer.Ordinal.Equals(link.Id, selectedLinkId));
+        if (selectedLink is null)
+        {
+            return;
+        }
+
+        nodeIds.Add(selectedLink.SourceNodeId);
+        nodeIds.Add(selectedLink.TargetNodeId);
+    }
+
+    private string ResolveSelectedNodeId()
+    {
+        string? selectedNodeId = GetSelectedNodeIdOrNull();
+        if (!string.IsNullOrWhiteSpace(selectedNodeId)
+            && CurrentDocument.Nodes.Any(node => StringComparer.Ordinal.Equals(node.Id, selectedNodeId)))
+        {
+            return selectedNodeId;
+        }
+
+        return CurrentDocument.Nodes.FirstOrDefault()?.Id ?? "splash";
+    }
+
+    private string? GetContainerGroupIdOrNull(string? nodeId)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            return null;
+        }
+
+        GraphNode? node = CurrentDocument.Nodes.FirstOrDefault(candidate => StringComparer.Ordinal.Equals(candidate.Id, nodeId));
+        return node?.GroupMemberships
+            .FirstOrDefault(groupId => CurrentDocument.Groups.Any(group => group.Kind == GraphGroupKind.Container && StringComparer.Ordinal.Equals(group.Id, groupId)));
+    }
+
+    private string GetSelectedAreaTitle()
+    {
+        string selectedNodeId = ResolveSelectedNodeId();
+        string? groupId = FocusedGroupId ?? GetContainerGroupIdOrNull(selectedNodeId);
+        GraphGroup? group = string.IsNullOrWhiteSpace(groupId)
+            ? null
+            : CurrentDocument.Groups.FirstOrDefault(candidate => StringComparer.Ordinal.Equals(candidate.Id, groupId));
+
+        return group is null ? "Area" : group.Title;
+    }
+
+    private static string? ResolveContainerGroupIdFromTreeItem(ProductNavigationTreeItem treeItem)
+    {
+        return treeItem.TreeItemId switch
+        {
+            "group-entry" => "entry",
+            "group-home" => "home_area",
+            "group-shop" => "shop",
+            "group-checkout" => "checkout_area",
+            "group-account" => "account",
+            "group-support" => "support",
+            "group-external" => "external",
+            _ => null
+        };
+    }
+
+    private static bool IsDirectLink(GraphLink link, string nodeId)
+    {
+        return StringComparer.Ordinal.Equals(link.SourceNodeId, nodeId)
+            || StringComparer.Ordinal.Equals(link.TargetNodeId, nodeId);
+    }
+
+    private static bool IsForwardBranchLink(GraphLink link, string sourceNodeId)
+    {
+        return StringComparer.Ordinal.Equals(link.SourceNodeId, sourceNodeId)
+            && IsQuietNavigationLink(link);
+    }
+
+    private bool ShouldIncludeScopedLink(GraphLink link, IReadOnlySet<string> nodeIds, string selectedNodeId)
+    {
+        if (!nodeIds.Contains(link.SourceNodeId) || !nodeIds.Contains(link.TargetNodeId))
+        {
+            return false;
+        }
+
+        string? selectedLinkId = SelectedLinkIds.FirstOrDefault() ?? SelectedLinkId;
+        if (!string.IsNullOrWhiteSpace(selectedLinkId) && StringComparer.Ordinal.Equals(link.Id, selectedLinkId))
+        {
+            return true;
+        }
+
+        if (!IsQuietNavigationLink(link))
+        {
+            return false;
+        }
+
+        if (ActiveViewMode == GraphViewMode.Focus)
+        {
+            return IsDirectLink(link, selectedNodeId);
+        }
+
+        return true;
+    }
+
+    private static bool IsQuietNavigationLink(GraphLink link)
+    {
+        return link.Kind is GraphLinkKind.Primary
+            or GraphLinkKind.Secondary
+            or GraphLinkKind.PopupOpen;
     }
 
     private void RequestFit()

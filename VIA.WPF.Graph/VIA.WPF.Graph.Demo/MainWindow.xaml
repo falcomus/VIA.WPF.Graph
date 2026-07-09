@@ -169,22 +169,64 @@
                   BorderBrush="#FFD4E0EB"
                   BorderThickness="1"
                   CornerRadius="8">
-            <graphControls:GraphCanvas x:Name="GraphCanvasView"
-                                       HorizontalAlignment="Stretch"
-                                       VerticalAlignment="Stretch"
-                                       Document="{Binding CurrentDocument}"
-                                       LayoutResult="{Binding CurrentLayout}"
-                                       ActiveViewMode="{Binding ActiveViewMode, Mode=TwoWay}"
-                                       VisualDensity="{Binding VisualDensity, Mode=TwoWay}"
-                                       SelectedNodeIds="{Binding SelectedNodeIds, Mode=TwoWay}"
-                                       SelectedLinkIds="{Binding SelectedLinkIds, Mode=TwoWay}"
-                                       SelectedGroupIds="{Binding SelectedGroupIds, Mode=TwoWay}"
-                                       FocusedNodeId="{Binding FocusedNodeId, Mode=TwoWay}"
-                                       FocusedGroupId="{Binding FocusedGroupId, Mode=TwoWay}"
-                                       Zoom="{Binding Zoom, Mode=TwoWay}"
-                                       PanX="{Binding PanX, Mode=TwoWay}"
-                                       PanY="{Binding PanY, Mode=TwoWay}"
-                                       GraphRequestCommand="{Binding GraphRequestCommand}" />
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <graphControls:SkiaGraphSurface x:Name="GraphCanvasView"
+                                             Grid.Row="0"
+                                             Grid.Column="0"
+                                             HorizontalAlignment="Stretch"
+                                             VerticalAlignment="Stretch"
+                                             Document="{Binding VisibleDocument}"
+                                             LayoutResult="{Binding VisibleLayout}"
+                                             ActiveViewMode="{Binding ActiveViewMode, Mode=TwoWay}"
+                                             VisualDensity="{Binding VisualDensity, Mode=TwoWay}"
+                                             SelectedNodeIds="{Binding SelectedNodeIds, Mode=TwoWay}"
+                                             SelectedLinkIds="{Binding SelectedLinkIds, Mode=TwoWay}"
+                                             SelectedGroupIds="{Binding SelectedGroupIds, Mode=TwoWay}"
+                                             FocusedNodeId="{Binding FocusedNodeId, Mode=TwoWay}"
+                                             FocusedGroupId="{Binding FocusedGroupId, Mode=TwoWay}"
+                                             Zoom="{Binding Zoom, Mode=TwoWay}"
+                                             PanX="{Binding PanX, Mode=TwoWay}"
+                                             PanY="{Binding PanY, Mode=TwoWay}"
+                                             GraphRequestCommand="{Binding GraphRequestCommand}" />
+
+              <ScrollBar x:Name="GraphHorizontalScrollBar"
+                         Grid.Row="1"
+                         Grid.Column="0"
+                         Height="13"
+                         Margin="2,0,2,2"
+                         Orientation="Horizontal"
+                         Opacity="0.82"
+                         Visibility="Collapsed"
+                         ValueChanged="OnGraphHorizontalScrollBarValueChanged" />
+
+              <ScrollBar x:Name="GraphVerticalScrollBar"
+                         Grid.Row="0"
+                         Grid.Column="1"
+                         Width="13"
+                         Margin="0,2,2,2"
+                         Orientation="Vertical"
+                         Opacity="0.82"
+                         Visibility="Collapsed"
+                         ValueChanged="OnGraphVerticalScrollBarValueChanged" />
+
+              <Border x:Name="GraphScrollCorner"
+                      Grid.Row="1"
+                      Grid.Column="1"
+                      Width="13"
+                      Height="13"
+                      Margin="0,0,2,2"
+                      Background="#FFE6EFF7"
+                      Visibility="Collapsed" />
+            </Grid>
           </Border>
 
           <Border Grid.Row="2"
@@ -192,7 +234,7 @@
                   Padding="12,9"
                   Style="{StaticResource InsetPanelBorderStyle}">
             <TextBlock Style="{StaticResource MutedTextStyle}"
-                       Text="Mouse wheel zooms. Right or middle mouse button pans. Tree selection centers the related graph node." />
+                       Text="Mouse wheel zooms. Right or middle mouse button pans. Tree selection updates the focused graph context." />
           </Border>
         </Grid>
       </Border>
