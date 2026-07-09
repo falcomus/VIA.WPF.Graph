@@ -13,6 +13,8 @@
 
 **Revision 8 – Größen-/Wrap-Vertrag und Layout-Tool-Grenze:** Der Größenvertrag wird um eine spätere `GraphCardMeasurePolicy` ergänzt. Titel, Subtitle, Typzeile und optionale Host-Metadaten müssen vor dem Layout mit definierten Wrap-/Ellipsis-Regeln in eine finale `GraphSize` überführt werden. `GraphLayoutNode.Bounds` werden nicht heimlich nach dem Graphviz-Layout vergrößert, weil sonst Kanten, Gruppen, Hit-Tests und Scroll-Extents nicht mehr zum Layout passen. Graphviz/`dot` bleibt die Standard-Layoutengine. Alternative Layoutadapter wie MSAGL dürfen später nur nach Step-Gate evaluiert werden; reine Graphalgorithmus-Bibliotheken wie QuikGraph ersetzen kein visuelles Layout.
 
+**Revision 9 – GraphWorkspace als Host-Onboarding-Schicht:** Die Library soll später nicht nur einzelne Primitive wie Tree und Skia-Fläche bereitstellen, sondern eine wiederverwendbare Workspace-/Navigator-Schicht für Standard-Hosts. Hosts wie UserFlow sollen nicht die komplette Product-Demo-Logik für Tree/Graph-Koordination, Scope-Bildung, ScrollIntoView, Fit/Center, Selection-Sync, ViewMode-Wechsel und Request-Dispatch nachbauen müssen. `GraphWorkspace` bleibt trotzdem hostneutral: Der Host liefert `GraphDocument`, hostbesessenen `GraphViewState`, Capabilities, Request-Handler und optionale Policies; die Library orchestriert die neutrale Arbeitsansicht, mutiert aber kein Hostmodell.
+
 ---
 
 ## 1. Ausgangspunkt und Zielbild
@@ -83,6 +85,7 @@ Die Lösung wird so aufgebaut, dass UserFlow nur ein erster Host ist. Andere Anw
 | Auswahl einzelner/mehrerer Gruppen | Gruppenselektion, Mehrfachauswahl, Fokus und Filter |
 | Collapse/Expand | ausschließlich für disjunkte/hierarchische Container-Gruppen |
 | Tree links, Gesamtgraph rechts | Hybridansicht mit synchroner Auswahl |
+| Host muss Tree/Graph-Koordination nicht selbst nachbauen | `GraphWorkspace` als wiederverwendbare Onboarding-Schicht über Tree, Skia-Fläche, Scope-Policy, View-State-Bindings und Requests |
 | Oder-Verzweigungen | Tree-Siblings als Alternativen; kein doppeltes Rendern von Rückzielen |
 | Back-/Sondertyp-Hinweise in der Karte | neutrale Typ-/Linkdarstellung ohne UserFlow-Annahmen; bei UserFlow nur mit fachlich ehrlicher Zielangabe |
 | Popups | kleinere Overlay-Karten, PopupOpen-Kanten und Tree-Knoten |
@@ -536,6 +539,55 @@ ShowExternalLinks
 ShowBackAndCancelLinks
 ShowReferenceLinks
 ```
+
+### 7.1.2 GraphWorkspace als Host-Onboarding-Schicht
+
+Neben den Einzelcontrols wird eine wiederverwendbare Workspace-Schicht geplant. Ziel ist, dass ein Host nicht die Product-Demo als Integrationsvorlage kopieren muss.
+
+`GraphWorkspace` beziehungsweise eine gleichwertige Workspace-/Navigator-Schicht übernimmt die neutrale Koordination von:
+
+- NavigationPathTree und SkiaGraphSurface,
+- Tree-Auswahl → sichtbarer Graph-Scope,
+- Graph-Klick → Tree-Pfad öffnen und sichtbaren Tree-Eintrag scrollen,
+- Selection-Sync für Nodes, Links und Gruppen,
+- Focus, Branch, Group Compact, Group Full, Overview und Diagnostic,
+- Fit-to-Graph, Center selected, 100 %, Free Pan/Zoom und optionalen Scrollbars,
+- Layout-/Routingoptionen je ViewMode,
+- Request-Dispatch an den Host über `IGraphRequestHandler` oder gebundene Commands,
+- Anzeige neutraler Request-/Validation-Feedbacks.
+
+Der Host liefert dafür nur die allgemeinen Eingaben:
+
+```text
+GraphDocument
+GraphViewState beziehungsweise bindbare View-State-Properties
+GraphHostCapabilities
+IGraphRequestHandler oder äquivalente Commands
+optionale GraphWorkspaceOptions / ScopePolicy / LayoutPolicy
+```
+
+Der Host bleibt Besitzer von Persistenz, Undo/Redo, fachlicher Mutation und domänenspezifischer Projektion. Die Workspace-Schicht darf keine UserFlow-, Screen-, Popup-, ActionArea- oder ActionDefinition-Typen kennen. Sie darf auch keine Hostcollections direkt verändern.
+
+Für UserFlow bedeutet das spätere Ziel: Der UserFlow-Adapter erzeugt ein neutrales `GraphDocument` und stellt Host-Commands bereit. Tree-/Graph-Synchronisierung, ScrollIntoView, sichtbare Teilgraphen, Fit/Center und allgemeine UX-Orchestrierung werden von der Library bereitgestellt und nicht in UserFlow dupliziert.
+
+Mögliche spätere Einbindungsformen:
+
+```xml
+<graph:GraphWorkspace
+    Document="{Binding FlowGraphDocument}"
+    ViewState="{Binding FlowGraphViewState, Mode=TwoWay}"
+    HostCapabilities="{Binding GraphCapabilities}"
+    RequestHandler="{Binding GraphRequestHandler}" />
+```
+
+oder:
+
+```xml
+<graph:GraphWorkspace
+    Workspace="{Binding FlowGraphWorkspace}" />
+```
+
+Die genaue öffentliche API wird erst nach einem Step-Gate festgelegt. Bis dahin bleibt Product-Demo-Code ein Erprobungsort, aber kein Host-spezifisches Muster, das später kopiert werden soll.
 
 ### 7.2 Linker Bereich: Navigation Path Tree
 
@@ -1271,6 +1323,7 @@ Mögliche Themen:
 | Graphviz-Layout ändert sich nach Datenänderung | Selection an stabile IDs binden, nicht an Koordinaten |
 | manueller Layoutwunsch zu früh | erst nach akzeptierter automatischer Darstellung separat planen |
 | UI-Control mutiert Fachmodell | ausschließlich Requests/Commands, keine Collection-Referenzen im Renderer |
+| jeder Host muss Demo-Orchestrierung kopieren | GraphWorkspace-/Policy-Schicht als wiederverwendbare Host-Onboarding-Schicht; Host liefert Daten und Commands, Library koordiniert Tree, Scope, Viewport und Requests |
 | parallele Rebuilds | generation-id/cancellation und atomarer Austausch des Layout-Ergebnisses |
 | Parallelkanten verschwinden oder Labels überlagern sich | Links immer über eigene Link-ID behandeln; Bündelung nur als reine Darstellung |
 | neue Action-ID wird vom bestehenden Editor verloren | ID durch ActionRow laden/speichern; Clone/Snapshot/JSON testen |
@@ -1313,15 +1366,16 @@ Mögliche Themen:
 ## 16. Empfohlene Reihenfolge der nächsten konkreten Schritte
 
 1. Aktuellen Skia-R7-Stand als offizielle Renderbasis dokumentieren und Product-Demo-Leichen bereinigen.
-2. CardMeasurePolicy, Text-Wrap, Ellipsis und Größenvertrag vor Graphviz verbindlich planen und danach prototypisch umsetzen.
-3. Scope-Policy, Link-Noise, Link-Routing und Viewport/Scrollbars in der Product Demo stabilisieren.
-4. SkiaGraphSurface-API/Bindings prüfen und entscheiden, was generischer Library-Vertrag wird und was Demo-/Host-Policy bleibt.
-5. Layout-Alternativen nur bei Bedarf als Adapter-Vergleich prüfen; kein Toolwechsel ohne Step-Gate.
-6. Legacy-GraphCanvas separat bewerten: behalten, archivieren oder nach Step-Gate entfernen.
-7. Den allgemeinen Hostvertrag für Requests und Capabilities auf Skia-Hit-Testing und Interaktionsoverlays anwenden.
-8. Erst vor UserFlow-read-only den aktuellen UserFlow-Export liefern und dort ActionDefinition-Identität, Altprojekt-Migration, Editor-Identitätserhalt und UserFlow-View-State verbindlich entscheiden.
-9. Erst danach die vorhandene `FlowView` read-only füllen.
-10. Bearbeitung und neue Navigation erst nach dem read-only Abnahmetest aktivieren.
+2. GraphWorkspace als Host-Onboarding-Schicht planen, damit Tree/Graph-Koordination, Scope, ScrollIntoView, Fit/Center und Request-Dispatch nicht von jedem Host nachgebaut werden müssen.
+3. CardMeasurePolicy, Text-Wrap, Ellipsis und Größenvertrag vor Graphviz verbindlich planen und danach prototypisch umsetzen.
+4. Scope-Policy, Link-Noise, Link-Routing und Viewport/Scrollbars aus der Product Demo in neutrale Workspace-/Policy-Regeln überführen.
+5. SkiaGraphSurface-API/Bindings prüfen und entscheiden, was generischer Library-Vertrag wird und was Demo-/Host-Policy bleibt.
+6. Layout-Alternativen nur bei Bedarf als Adapter-Vergleich prüfen; kein Toolwechsel ohne Step-Gate.
+7. Legacy-GraphCanvas separat bewerten: behalten, archivieren oder nach Step-Gate entfernen.
+8. Den allgemeinen Hostvertrag für Requests und Capabilities auf Skia-Hit-Testing, Interaktionsoverlays und GraphWorkspace anwenden.
+9. Erst vor UserFlow-read-only den aktuellen UserFlow-Export liefern und dort ActionDefinition-Identität, Altprojekt-Migration, Editor-Identitätserhalt und UserFlow-View-State verbindlich entscheiden.
+10. Erst danach die vorhandene `FlowView` read-only füllen.
+11. Bearbeitung und neue Navigation erst nach dem read-only Abnahmetest aktivieren.
 
 ---
 
@@ -1636,7 +1690,7 @@ Diese Revision ersetzt nicht den bisherigen Masterplantext, sondern legt ab jetz
 
 | Neue Phase | Titel | Inhalt |
 |---|---|---|
-| Phase 7 | Library-Finalisierung und Host-Integrationsreife | SkiaGraphSurface als aktive Renderbasis, öffentliche API, Hostvertrag, Request-/Result-Verhalten, View-State-Bindings, Scope-Policy, CardMeasurePolicy, Text-Wrap, allgemeine Synchronisierung und Host-Neutralität härten. |
+| Phase 7 | Library-Finalisierung und Host-Integrationsreife | SkiaGraphSurface als aktive Renderbasis, GraphWorkspace als Host-Onboarding-Schicht, öffentliche API, Hostvertrag, Request-/Result-Verhalten, View-State-Bindings, Scope-Policy, CardMeasurePolicy, Text-Wrap, allgemeine Synchronisierung und Host-Neutralität härten. |
 | Phase 8 | Allgemeine UX-/Demo-Abnahme | Product Demo ohne UserFlow verbessern, Skia-Hybridansicht absichern, Navigation, Fokus, Zoom/Pan/Scrollbars, Tree+Graph-Verhalten und größere Demo-Abnahme finalisieren. |
 | Phase 9 | Dokumentation, Packaging und Host-Onboarding | Integrationsdokumentation, Paket-/Referenzstruktur, Host-Beispiele, Übergabehinweise und Release-Vorbereitung erstellen. |
 | Phase 10 | UserFlow read-only Adapter und FlowView | Bisherige UserFlow-read-only-Phase. Visualisierung aktueller UserFlow-Daten ohne Mutation. |
@@ -1715,17 +1769,36 @@ Abnahme:
 - Gruppen-, Link-, Hit-Test- und Scroll-Extents bleiben konsistent.
 - MSAGL/QuikGraph bleiben nur dokumentierte spätere Prüfoptionen, keine neue Dependency.
 
+### P7-003b – GraphWorkspace als Host-Onboarding-Schicht planen
+
+Ziel:
+
+- Eine wiederverwendbare Workspace-/Navigator-Schicht als Standardintegration für Hosts planen.
+- Product-Demo-Logik für Tree/Graph-Koordination, sichtbare Teilgraphen, ScrollIntoView, Fit/Center, Mode-Wechsel und Request-Dispatch als Kandidat für allgemeine Library-Mechanik identifizieren.
+- Klären, welche Verantwortung in `GraphWorkspace`, `SkiaGraphSurface`, `GraphNavigationPathTree`, Scope-/Layout-Policies und Host-ViewModels liegt.
+- Sicherstellen, dass Hosts wie UserFlow später nur `GraphDocument`, View-State, Capabilities und Request-Handler liefern müssen.
+- Keine UserFlow-Typen, keine Hostmodell-Mutation und keine Persistenzentscheidung in die Library ziehen.
+
+Abnahme:
+
+- Masterplan beschreibt die Workspace-Verantwortung eindeutig.
+- Hostpflichten und Librarypflichten sind getrennt.
+- Die Product Demo bleibt Erprobungsort, aber nicht das nachzubauende Integrationsmuster.
+- Kein Code-/API-Commit führt neue öffentliche `GraphWorkspace`-Typen ohne eigenes Step-Gate ein.
+
 ### P7-004 – NavigationPathTree/Graph-Sync allgemein absichern
 
 Ziel:
 
 - Tree/Graph-Synchronisierung ohne Domänenannahmen prüfen.
+- GraphWorkspace-/Policy-Regeln für Tree-Auswahl, sichtbaren Graph-Scope und ScrollIntoView vorbereiten.
 - Selection, OpenNode, OpenGroup, ClearSelection und ReturnToOverview allgemein absichern.
 - Zyklensichere Projektion und Referenzknoten-Verhalten prüfen.
 
 Abnahme:
 
 - Tree und Graph arbeiten über neutrale IDs und Requests.
+- Standard-Hosts müssen ScrollIntoView, Focus-Graph und Tree-Pfadöffnung nicht selbst nachbauen.
 - Kein Hostmodell wird direkt mutiert.
 - Zyklische Graphen bleiben sicher darstellbar.
 
