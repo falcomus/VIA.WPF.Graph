@@ -1,0 +1,513 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:viewModels="clr-namespace:VIA.WPF.Graph.Demo.ViewModels">
+  <Color x:Key="ProductDemo.PageBackgroundColor">#EEF3F8</Color>
+  <Color x:Key="ProductDemo.CardBackgroundColor">#FFFFFFFF</Color>
+  <Color x:Key="ProductDemo.CardBorderColor">#FFD8E4EF</Color>
+  <Color x:Key="ProductDemo.PanelBackgroundColor">#FFF8FBFE</Color>
+  <Color x:Key="ProductDemo.MutedTextColor">#FF607386</Color>
+  <Color x:Key="ProductDemo.TitleTextColor">#FF172435</Color>
+  <Color x:Key="ProductDemo.AccentColor">#FF1E5A96</Color>
+  <Color x:Key="ProductDemo.AccentSoftColor">#FFEAF2FA</Color>
+  <Color x:Key="ProductDemo.TreeLineColor">#FFB9CAD9</Color>
+
+  <SolidColorBrush x:Key="PageBackgroundBrush"
+                   Color="{StaticResource ProductDemo.PageBackgroundColor}" />
+  <SolidColorBrush x:Key="CardBackgroundBrush"
+                   Color="{StaticResource ProductDemo.CardBackgroundColor}" />
+  <SolidColorBrush x:Key="CardBorderBrush"
+                   Color="{StaticResource ProductDemo.CardBorderColor}" />
+  <SolidColorBrush x:Key="PanelBackgroundBrush"
+                   Color="{StaticResource ProductDemo.PanelBackgroundColor}" />
+  <SolidColorBrush x:Key="MutedTextBrush"
+                   Color="{StaticResource ProductDemo.MutedTextColor}" />
+  <SolidColorBrush x:Key="TitleTextBrush"
+                   Color="{StaticResource ProductDemo.TitleTextColor}" />
+  <SolidColorBrush x:Key="AccentBrush"
+                   Color="{StaticResource ProductDemo.AccentColor}" />
+  <SolidColorBrush x:Key="AccentSoftBrush"
+                   Color="{StaticResource ProductDemo.AccentSoftColor}" />
+  <SolidColorBrush x:Key="TreeLineBrush"
+                   Color="{StaticResource ProductDemo.TreeLineColor}" />
+
+  <DropShadowEffect x:Key="ProductDemo.CardShadow"
+                    BlurRadius="18"
+                    Direction="270"
+                    Opacity="0.13"
+                    ShadowDepth="4"
+                    Color="#FF2C4054" />
+
+  <DropShadowEffect x:Key="ProductDemo.TreeGroupShadow"
+                    BlurRadius="10"
+                    Direction="270"
+                    Opacity="0.14"
+                    ShadowDepth="2"
+                    Color="#FF2C4054" />
+
+  <DropShadowEffect x:Key="ProductDemo.SelectedTreeItemShadow"
+                    BlurRadius="10"
+                    Direction="270"
+                    Opacity="0.12"
+                    ShadowDepth="2"
+                    Color="#FF244662" />
+
+  <Style x:Key="CardBorderStyle"
+         TargetType="{x:Type Border}">
+    <Setter Property="Background"
+            Value="{StaticResource CardBackgroundBrush}" />
+    <Setter Property="BorderBrush"
+            Value="{StaticResource CardBorderBrush}" />
+    <Setter Property="BorderThickness"
+            Value="1" />
+    <Setter Property="CornerRadius"
+            Value="10" />
+    <Setter Property="SnapsToDevicePixels"
+            Value="True" />
+    <Setter Property="Effect"
+            Value="{StaticResource ProductDemo.CardShadow}" />
+  </Style>
+
+  <Style x:Key="InsetPanelBorderStyle"
+         TargetType="{x:Type Border}">
+    <Setter Property="Background"
+            Value="{StaticResource PanelBackgroundBrush}" />
+    <Setter Property="BorderBrush"
+            Value="#FFE0E9F2" />
+    <Setter Property="BorderThickness"
+            Value="1" />
+    <Setter Property="CornerRadius"
+            Value="8" />
+    <Setter Property="SnapsToDevicePixels"
+            Value="True" />
+  </Style>
+
+  <Style x:Key="WorkspaceHeaderBorderStyle"
+         TargetType="{x:Type Border}">
+    <Setter Property="Background"
+            Value="{StaticResource CardBackgroundBrush}" />
+    <Setter Property="BorderBrush"
+            Value="#FFE2EBF3" />
+    <Setter Property="BorderThickness"
+            Value="0,0,0,1" />
+    <Setter Property="CornerRadius"
+            Value="0" />
+    <Setter Property="SnapsToDevicePixels"
+            Value="True" />
+  </Style>
+
+  <Style x:Key="ToolbarButtonStyle"
+         TargetType="{x:Type Button}">
+    <Setter Property="MinHeight"
+            Value="32" />
+    <Setter Property="Padding"
+            Value="12,5" />
+    <Setter Property="Margin"
+            Value="0,0,7,0" />
+    <Setter Property="BorderThickness"
+            Value="1" />
+    <Setter Property="BorderBrush"
+            Value="#FFC9D8E6" />
+    <Setter Property="Background"
+            Value="#FFFFFFFF" />
+    <Setter Property="Foreground"
+            Value="#FF26384A" />
+    <Setter Property="FontWeight"
+            Value="SemiBold" />
+    <Setter Property="Cursor"
+            Value="Hand" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type Button}">
+          <Border x:Name="ButtonChrome"
+                  MinHeight="{TemplateBinding MinHeight}"
+                  Padding="{TemplateBinding Padding}"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="7"
+                  SnapsToDevicePixels="True">
+            <ContentPresenter HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver"
+                     Value="True">
+              <Setter TargetName="ButtonChrome"
+                      Property="Background"
+                      Value="#FFF4F8FC" />
+              <Setter TargetName="ButtonChrome"
+                      Property="BorderBrush"
+                      Value="#FF9FB7CC" />
+            </Trigger>
+            <Trigger Property="IsPressed"
+                     Value="True">
+              <Setter TargetName="ButtonChrome"
+                      Property="Background"
+                      Value="#FFE7F0F8" />
+            </Trigger>
+            <Trigger Property="IsEnabled"
+                     Value="False">
+              <Setter Property="Opacity"
+                      Value="0.55" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="PrimaryToolbarButtonStyle"
+         BasedOn="{StaticResource ToolbarButtonStyle}"
+         TargetType="{x:Type Button}">
+    <Setter Property="BorderBrush"
+            Value="#FF1E5A96" />
+    <Setter Property="Background"
+            Value="#FF1E5A96" />
+    <Setter Property="Foreground"
+            Value="#FFFFFFFF" />
+  </Style>
+
+  <Style x:Key="MutedTextStyle"
+         TargetType="{x:Type TextBlock}">
+    <Setter Property="Foreground"
+            Value="{StaticResource MutedTextBrush}" />
+    <Setter Property="TextWrapping"
+            Value="Wrap" />
+  </Style>
+
+  <Style x:Key="ProductNavigationTreeViewStyle"
+         TargetType="{x:Type TreeView}">
+    <Setter Property="Background"
+            Value="Transparent" />
+    <Setter Property="BorderThickness"
+            Value="0" />
+    <Setter Property="Padding"
+            Value="0,2,12,10" />
+    <Setter Property="ScrollViewer.HorizontalScrollBarVisibility"
+            Value="Disabled" />
+    <Setter Property="ScrollViewer.CanContentScroll"
+            Value="False" />
+    <Setter Property="ScrollViewer.VerticalScrollBarVisibility"
+            Value="Auto" />
+  </Style>
+
+
+
+  <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+  <Style x:Key="ProductNavigationExpanderToggleStyle"
+         TargetType="{x:Type ToggleButton}">
+    <Setter Property="Focusable"
+            Value="False" />
+    <Setter Property="Width"
+            Value="18" />
+    <Setter Property="Height"
+            Value="18" />
+    <Setter Property="Margin"
+            Value="0,0,8,0" />
+    <Setter Property="Background"
+            Value="Transparent" />
+    <Setter Property="BorderThickness"
+            Value="0" />
+    <Setter Property="Foreground"
+            Value="#FF557087" />
+    <Setter Property="Cursor"
+            Value="Hand" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type ToggleButton}">
+          <Grid Width="{TemplateBinding Width}"
+                Height="{TemplateBinding Height}"
+                Background="{TemplateBinding Background}"
+                SnapsToDevicePixels="True">
+            <Path x:Name="Arrow"
+                  Width="8"
+                  Height="8"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Data="M 0 0 L 6 4 L 0 8 Z"
+                  Fill="{TemplateBinding Foreground}"
+                  RenderTransformOrigin="0.5,0.5"
+                  Stretch="Uniform">
+              <Path.RenderTransform>
+                <RotateTransform Angle="0" />
+              </Path.RenderTransform>
+            </Path>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked"
+                     Value="True">
+              <Setter TargetName="Arrow"
+                      Property="RenderTransform">
+                <Setter.Value>
+                  <RotateTransform Angle="90" />
+                </Setter.Value>
+              </Setter>
+            </Trigger>
+            <Trigger Property="IsMouseOver"
+                     Value="True">
+              <Setter Property="Foreground"
+                      Value="#FF1E5A96" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="ProductNavigationTreeItemContainerStyle"
+         TargetType="{x:Type TreeViewItem}">
+    <Setter Property="HorizontalContentAlignment"
+            Value="Stretch" />
+    <Setter Property="IsExpanded"
+            Value="{Binding IsExpanded, Mode=TwoWay}" />
+    <Setter Property="IsSelected"
+            Value="{Binding IsSelected, Mode=TwoWay}" />
+    <Setter Property="Margin"
+            Value="0" />
+    <Setter Property="Padding"
+            Value="0" />
+    <Setter Property="FontSize"
+            Value="13" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type TreeViewItem}">
+          <Grid SnapsToDevicePixels="True">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <ContentPresenter x:Name="PART_Header"
+                              Grid.Row="0"
+                              HorizontalAlignment="Stretch"
+                              ContentSource="Header"
+                              RecognizesAccessKey="True" />
+
+            <Border x:Name="ChildrenHost"
+                    Grid.Row="1"
+                    Margin="0,2,0,0"
+                    Padding="0">
+              <ItemsPresenter x:Name="ItemsHost" />
+            </Border>
+          </Grid>
+
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsExpanded"
+                     Value="False">
+              <Setter TargetName="ChildrenHost"
+                      Property="Visibility"
+                      Value="Collapsed" />
+            </Trigger>
+            <Trigger Property="HasItems"
+                     Value="False">
+              <Setter TargetName="ChildrenHost"
+                      Property="Visibility"
+                      Value="Collapsed" />
+            </Trigger>
+            <Trigger Property="IsSelected"
+                     Value="True">
+              <Setter Property="Panel.ZIndex"
+                      Value="2" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <HierarchicalDataTemplate DataType="{x:Type viewModels:ProductNavigationTreeItem}"
+                            ItemsSource="{Binding Children}">
+    <Border x:Name="TreeItemChrome"
+            Margin="12,3,16,3"
+            Padding="10,8"
+            HorizontalAlignment="Stretch"
+            Background="Transparent"
+            BorderBrush="Transparent"
+            BorderThickness="1"
+            CornerRadius="6"
+            SnapsToDevicePixels="True">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Rectangle x:Name="SelectionAccent"
+                   Grid.ColumnSpan="3"
+                   Width="0"
+                   Margin="-10,-8,10,-8"
+                   HorizontalAlignment="Left"
+                   Fill="#FF1F79D0"
+                   RadiusX="2"
+                   RadiusY="2" />
+
+        <StackPanel Grid.Column="0"
+                    MinWidth="0"
+                    VerticalAlignment="Center">
+          <TextBlock x:Name="TreeItemTitleText"
+                     FontSize="14"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource TitleTextBrush}"
+                     Text="{Binding Title}"
+                     TextTrimming="CharacterEllipsis" />
+          <TextBlock x:Name="TreeItemSubtitleText"
+                     Margin="0,2,0,0"
+                     FontSize="12"
+                     Foreground="{StaticResource MutedTextBrush}"
+                     Text="{Binding Subtitle}"
+                     TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <Border x:Name="TreeBadge"
+                Grid.Column="1"
+                Margin="12,0,0,0"
+                Padding="8,3"
+                VerticalAlignment="Center"
+                Background="#FFF5F9FD"
+                BorderBrush="#FFD6E5F2"
+                BorderThickness="1"
+                CornerRadius="6">
+          <TextBlock x:Name="TreeBadgeText"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     Foreground="#FF315B7E"
+                     Text="{Binding BadgeText}" />
+        </Border>
+
+        <ToggleButton x:Name="InlineExpander"
+                      Grid.Column="2"
+                      Margin="8,0,0,0"
+                      IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                      Style="{StaticResource ProductNavigationExpanderToggleStyle}" />
+      </Grid>
+    </Border>
+
+    <HierarchicalDataTemplate.Triggers>
+      <DataTrigger Binding="{Binding HasChildren}"
+                   Value="False">
+        <Setter TargetName="InlineExpander"
+                Property="Visibility"
+                Value="Collapsed" />
+      </DataTrigger>
+
+      <DataTrigger Binding="{Binding IsGroup}"
+                   Value="True">
+        <Setter TargetName="TreeItemChrome"
+                Property="Margin"
+                Value="0,10,16,8" />
+        <Setter TargetName="TreeItemChrome"
+                Property="Padding"
+                Value="16,11" />
+        <Setter TargetName="TreeItemChrome"
+                Property="Background"
+                Value="#FF1E5A96" />
+        <Setter TargetName="TreeItemChrome"
+                Property="BorderBrush"
+                Value="#FF1E5A96" />
+        <Setter TargetName="TreeItemChrome"
+                Property="CornerRadius"
+                Value="4" />
+        <Setter TargetName="TreeItemChrome"
+                Property="Effect"
+                Value="{x:Null}" />
+        <Setter TargetName="InlineExpander"
+                Property="Foreground"
+                Value="#E6FFFFFF" />
+        <Setter TargetName="TreeItemTitleText"
+                Property="FontSize"
+                Value="15" />
+        <Setter TargetName="TreeItemTitleText"
+                Property="Foreground"
+                Value="#FFFFFFFF" />
+        <Setter TargetName="TreeItemSubtitleText"
+                Property="Foreground"
+                Value="#DDEFFFFF" />
+        <Setter TargetName="TreeBadge"
+                Property="Background"
+                Value="#26FFFFFF" />
+        <Setter TargetName="TreeBadge"
+                Property="BorderBrush"
+                Value="#4DFFFFFF" />
+        <Setter TargetName="TreeBadgeText"
+                Property="Foreground"
+                Value="#FFFFFFFF" />
+      </DataTrigger>
+
+      <DataTrigger Binding="{Binding IsReference}"
+                   Value="True">
+        <Setter TargetName="TreeItemChrome"
+                Property="Opacity"
+                Value="0.78" />
+      </DataTrigger>
+
+      <DataTrigger Binding="{Binding IsPopup}"
+                   Value="True">
+        <Setter TargetName="TreeBadge"
+                Property="Background"
+                Value="#FFFFF7E7" />
+        <Setter TargetName="TreeBadge"
+                Property="BorderBrush"
+                Value="#FFE8C983" />
+        <Setter TargetName="TreeBadgeText"
+                Property="Foreground"
+                Value="#FF7C5A11" />
+      </DataTrigger>
+
+      <DataTrigger Binding="{Binding IsExternal}"
+                   Value="True">
+        <Setter TargetName="TreeBadge"
+                Property="Background"
+                Value="#FFF7EDF8" />
+        <Setter TargetName="TreeBadge"
+                Property="BorderBrush"
+                Value="#FFE6C9EA" />
+        <Setter TargetName="TreeBadgeText"
+                Property="Foreground"
+                Value="#FF71487A" />
+      </DataTrigger>
+
+      <DataTrigger Binding="{Binding IsSelected}"
+                   Value="True">
+        <Setter TargetName="TreeItemChrome"
+                Property="Background"
+                Value="#FFFFFFFF" />
+        <Setter TargetName="TreeItemChrome"
+                Property="BorderBrush"
+                Value="#FF82B7E8" />
+        <Setter TargetName="TreeItemChrome"
+                Property="Effect"
+                Value="{StaticResource ProductDemo.SelectedTreeItemShadow}" />
+        <Setter TargetName="SelectionAccent"
+                Property="Width"
+                Value="4" />
+        <Setter TargetName="TreeItemTitleText"
+                Property="Foreground"
+                Value="#FF123F67" />
+      </DataTrigger>
+
+      <MultiDataTrigger>
+        <MultiDataTrigger.Conditions>
+          <Condition Binding="{Binding IsGroup}"
+                     Value="True" />
+          <Condition Binding="{Binding IsSelected}"
+                     Value="True" />
+        </MultiDataTrigger.Conditions>
+        <Setter TargetName="TreeItemChrome"
+                Property="Background"
+                Value="#FF164D82" />
+        <Setter TargetName="TreeItemChrome"
+                Property="BorderBrush"
+                Value="#FF164D82" />
+        <Setter TargetName="TreeItemTitleText"
+                Property="Foreground"
+                Value="#FFFFFFFF" />
+        <Setter TargetName="SelectionAccent"
+                Property="Width"
+                Value="0" />
+      </MultiDataTrigger>
+    </HierarchicalDataTemplate.Triggers>
+  </HierarchicalDataTemplate>
+
+</ResourceDictionary>
