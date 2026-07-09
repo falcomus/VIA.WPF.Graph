@@ -1,6 +1,6 @@
 # VIA.WPF.Graph – Masterplan für allgemeine Graph-Visualisierung und spätere UserFlow-Integration
 
-**Status:** geprüfter Architektur- und Entwicklungsplan, fortgeschrieben bis Skia-R7-Stand  
+**Status:** geprüfter Architektur- und Entwicklungsplan, fortgeschrieben bis Skia-R7-Measure-/Wrap-Stand  
 **Ziel:** Allgemein nutzbare Graph-Visualisierung für WPF in der Solution `VIA.WPF.Graph`, zunächst als unabhängiges Test-/Prototyp-Projekt, danach schrittweise Integration in VIA UserFlow.  
 **Layout-Engine:** `Rubjerg.Graphviz` **3.0.5** / Graphviz `dot`.  
 **Renderbasis:** WPF-Host mit `SkiaGraphSurface` auf `SkiaSharp.Views.WPF` für die aktive Product-Demo-Graphfläche; die frühere WPF-`GraphCanvas` bleibt vorerst als Legacy-/Vergleichsbestand erhalten.  
@@ -10,6 +10,8 @@
 **Revision 4 – Vollständigkeitsprüfung, Übergabe und strikte Host-Isolation:** Dieser Stand enthält zusätzlich die bisher besprochenen Punkte zu Tree/Graph-Hybridansicht, Karten-Badges für Rückwege, Popup-Darstellung, allgemeinen Knoten/Links/Gruppen, überlappenden Gruppen, Collapse/Expand, Bearbeitung über ActionAreas, CommunityToolkit.Mvvm, Persistenz, Altprojekt-Migration, der aktuellen Einschränkung des ActionArea-Editors sowie einen vollständigen Übergabeauftrag für einen neuen Chat. Die frühere Graphviz-Demo ist ausdrücklich keine technische Baseline.
 
 **Revision 7 – Skia-R7-Fortschreibung:** Nach R7-001/R7-002 ist `SkiaGraphSurface` die aktive Renderfläche der Product Demo. Skia übernimmt Rendering, Hit-Testing, Pan/Zoom, Selection-Overlays und Präsentationsdarstellung innerhalb von `VIA.WPF.Graph.Wpf`; Graphviz bleibt ausschließlich für Layout und Routing zuständig. Die alte WPF-`GraphCanvas` wird nicht weiter optisch ausgebaut und darf erst nach einem eigenen API-/Kompatibilitäts-Step-Gate entfernt werden. Vor der UserFlow-Integration werden Scope-Policy, Link-Routing, Viewport/Scrollbars und Interaktionsrequests auf Skia-Basis gehärtet.
+
+**Revision 8 – Größen-/Wrap-Vertrag und Layout-Tool-Grenze:** Der Größenvertrag wird um eine spätere `GraphCardMeasurePolicy` ergänzt. Titel, Subtitle, Typzeile und optionale Host-Metadaten müssen vor dem Layout mit definierten Wrap-/Ellipsis-Regeln in eine finale `GraphSize` überführt werden. `GraphLayoutNode.Bounds` werden nicht heimlich nach dem Graphviz-Layout vergrößert, weil sonst Kanten, Gruppen, Hit-Tests und Scroll-Extents nicht mehr zum Layout passen. Graphviz/`dot` bleibt die Standard-Layoutengine. Alternative Layoutadapter wie MSAGL dürfen später nur nach Step-Gate evaluiert werden; reine Graphalgorithmus-Bibliotheken wie QuikGraph ersetzen kein visuelles Layout.
 
 ---
 
@@ -394,9 +396,58 @@ WPF/Skia liefert:
 
 ### 6.1.1 Größen- und Koordinatenvertrag
 
-Graphviz benötigt Knotengrößen vor dem Layout. Daher arbeitet jede Ansicht zunächst mit festen, je Template definierten Größenprofilen (`Compact`, `Standard`, `Detail`, `Popup`, `Stub`). Dynamisch gemessene WPF-Karten dürfen erst nach einem kontrollierten Rebuild Einfluss auf das Layout nehmen; sie dürfen nicht stillschweigend andere Graphviz-Maße verwenden.
+Graphviz benötigt die endgültigen Knotengrößen vor dem Layout. Daher arbeitet jede Ansicht zunächst mit festen, je Template definierten Größenprofilen (`Compact`, `Standard`, `Detail`, `Popup`, `Stub`). Diese Profile sind aber nur ein erster Vertrag. Für die produktive Skia-Library wird daraus eine explizite Mess- und Wrap-Policy.
+
+`GraphLayoutNode.Bounds` sind das Ergebnis des Layouts. Sie dürfen nicht stillschweigend nachträglich vergrößert werden, nur weil ein gerenderter Titel oder Subtitle nicht passt. Eine solche Korrektur würde Graphviz-Kanten, Pfeilenden, Cluster-Bounds, Hit-Tests, Fit-to-Graph und Scroll-Extents verfälschen. Zulässig ist nur ein klar benannter visueller Innenabstand innerhalb der bereits berechneten Bounds oder ein eigener, dokumentierter Postprocessor für rein optische Gruppenflächen.
+
+Der saubere Ablauf lautet:
+
+```text
+GraphDocument / Projektion
+    -> CardMeasurePolicy mit Template, ViewMode, Texten und Max-/Min-Regeln
+    -> finale GraphSize je Node
+    -> Graphviz-Layout mit echten Node-Größen
+    -> GraphLayoutResult mit Node-/Group-/Edge-Geometrie
+    -> SkiaGraphSurface rendert exakt in diesen Bounds
+```
 
 Der Graphviz-Adapter kapselt die Umrechnung zwischen DOT-/Point-Koordinaten und WPF-DIPs an genau einer Stelle. Alle Bounds, Splines, Zoom- und Hit-Test-Berechnungen verwenden danach nur noch dieses gemeinsame DIP-Koordinatensystem. `SkiaGraphSurface` rendert diese Koordinaten direkt über Skia und hält seine hit-testbaren Node-/Link-/Group-Bounds aus dem aktuellen Render-Snapshot vor.
+
+### 6.1.2 Textmessung, Wrap und CardMeasurePolicy
+
+Für Skia muss Textlayout planbar sein. Deshalb wird eine neutrale, hostfreie `GraphCardMeasurePolicy` vorgesehen. Sie liegt nicht im Core als Skia-/WPF-Abhängigkeit, sondern als WPF-/Renderer-Policy oder als vom Host vor dem Layout gelieferte Größenentscheidung. Der Core kennt weiterhin nur `GraphSize`.
+
+Die Policy berechnet pro Node vor dem Layout:
+
+- Mindest- und Maximalbreite,
+- Mindest- und Maximalhöhe,
+- Zeilenregeln für Titel, Subtitle, Typzeile und optionale Metazeilen,
+- Wrap oder Ellipsis pro ViewMode und NodeKind,
+- Innenabstände und reservierte Bereiche für Selection, Labels oder Statushinweise,
+- Fallback-Regeln bei sehr langen Texten.
+
+Empfohlene Standardregeln:
+
+| View/Template | Titel | Subtitle | Typ-/Metazeile | Verhalten bei Überlauf |
+|---|---|---|---|---|
+| Compact | 1 Zeile | ausblenden | ausblenden | Ellipsis |
+| Standard | bis 2 Zeilen | optional 1 Zeile | nur Spezialtypen | Ellipsis nach erlaubten Zeilen |
+| Detail | bis 3 Zeilen | bis 2 Zeilen | erlaubt | Höhe bis Maximalwert wachsen lassen |
+| Popup | 1–2 Zeilen | optional | Popup-Typzeile erlaubt | kompakt halten |
+| Stub/External | 1 Zeile | optional | External/Reference erlaubt | Ellipsis |
+
+Ändert sich Text, Template, VisualDensity oder ViewMode so, dass sich die gemessene Größe ändert, wird ein kontrollierter Layout-Rebuild ausgelöst. Es gibt keine stille Größenabweichung zwischen Graphviz-Input und Skia-Rendering.
+
+### 6.1.3 Layout-Engine-Grenze und optionale Alternativen
+
+Graphviz/`dot` bleibt die Standard-Layoutengine für gerichtete Navigations- und Bereichsgraphen. Andere Werkzeuge werden nicht vermischt, sondern ausschließlich über eigene Adapter hinter demselben neutralen Layoutvertrag evaluiert.
+
+- Graphviz/`dot`: Standard für hierarchische Flows, Gruppen/Cluster und Diagnosegraphen.
+- MSAGL: später als optionaler alternativer Layoutadapter prüfbar, aber nur nach eigenem Step-Gate, API-Prüfung und Vergleichstest.
+- QuikGraph/QuickGraph: nur für Graphalgorithmen wie Analyse, Traversal oder Pfadsuche interessant; kein Ersatz für visuelles Card-/Cluster-/Edge-Layout.
+- Eigene Routen: für Focus-/Branch-Ansichten zulässig, wenn Graphviz-Splines visuell zu unruhig sind. Dann bleiben Node-Positionen aus dem Layout, aber Kanten werden view-spezifisch als gerade, polyline oder orthogonale Kurzrouten berechnet.
+
+Kein neues Layoutpaket wird eingeführt, bevor der tatsächliche API-, Lizenz-, Deployment- und Qualitätsnutzen gegen den aktuellen Graphviz-Adapter geprüft wurde.
 
 ### 6.2 Standardlayoutregeln
 
@@ -425,6 +476,8 @@ Zu testen und je Ansicht separat einstellbar:
 - orthogonal.
 
 Die Wahl wird nicht als globale technische Einstellung erzwungen. Sie gehört in die jeweilige Ansichtskonfiguration, weil ein Bereichsfluss andere Anforderungen hat als eine Diagnoseansicht.
+
+Für Focus- und Branch-Ansichten ist ausdrücklich erlaubt, Graphviz nur für Node- und Group-Positionen zu verwenden und die sichtbaren Kanten anschließend mit einer eigenen, vereinfachten Routing-Policy zu zeichnen. Das ist kein Bruch der Architektur, solange die Policy hostneutral bleibt und keine Domänenbegriffe kennt. Ziel ist weniger Zickzack und bessere Lesbarkeit in kleinen Ausschnitten.
 
 ### 6.5 Fehler- und Fallbackverhalten
 
@@ -1176,6 +1229,8 @@ Mögliche Themen:
 - Tastaturfokus und Accessibility-Basis,
 - Label-Ausblendung/Bündelung ohne Verlust der Link-Auswahl,
 - Render-Layer-Reihenfolge: Gruppen, Linien, Karten, Pfeile/Labels/Overlays.
+- Text-Wrap und Ellipsis pro NodeKind/ViewMode ohne Abschneiden außerhalb der Card-Bounds.
+- gemessene Card-Größen stimmen mit Graphviz-Input und Skia-Rendering überein.
 
 ### 13.4 UserFlow-Integrationstests
 
@@ -1222,6 +1277,9 @@ Mögliche Themen:
 | Altprojekte brechen nach Modellergänzung | rückwärtskompatibler Default und definierte Migrationsregel |
 | ungruppierte Screens verschwinden aus Bereichsansichten | stabile synthetische Gruppe „Ohne Gruppe“ nur in der Projektion |
 | früherer Demo-Code wird als technische Baseline missverstanden | Demo nicht übergeben und nicht übernehmen; neue Solution entsteht ausschließlich nach diesem Plan |
+| Text wird erst nach dem Layout größer gerendert | CardMeasurePolicy vor Graphviz ausführen; Bounds nicht stillschweigend nachträglich vergrößern |
+| Wrap-Regeln machen Layout unruhig | Min-/Max-Größen und ViewMode-spezifische Zeilenlimits definieren; Rebuild nur kontrolliert auslösen |
+| Layout-Toolwechsel erzeugt neue Abhängigkeiten ohne Nutzen | Graphviz bleibt Standard; MSAGL/andere Tools nur nach Adapter-Step-Gate und Vergleichstest |
 | Legacy-GraphCanvas bleibt nach Skia-Pivot als falsche Zielrichtung liegen | nicht weiter ausbauen; Entfernung/Archivierung nur nach eigenem API-Kompatibilitäts-Step-Gate |
 | Skia-Hit-Testing und WPF-ScrollViewer divergieren | ein zentraler Viewport-/Extent-Vertrag und Tests für Pan/Zoom/Scrollbar-Synchronisierung |
 
@@ -1246,19 +1304,24 @@ Mögliche Themen:
 15. **Legacy-GraphCanvas:** Entfernen, archivieren oder als Kompatibilitätscontrol behalten?
 16. **Scope-Policy:** Welche Defaults gelten für Node Focus, Branch, Group Compact, Group Full und Overview?
 17. **Link-Routing:** Wann nutzt die Ansicht Graphviz-Splines, gerade Linien, Polyline oder orthogonale Kurzrouten?
+18. **CardMeasurePolicy:** Welche Wrap-/Ellipsis-Regeln gelten je ViewMode, NodeKind und VisualDensity?
+19. **Layout-Alternativen:** Soll MSAGL später als optionaler Adapter evaluiert werden, oder bleibt Graphviz alleinige Layoutengine?
+20. **Graph-Algorithmen:** Werden QuikGraph/QuickGraph-ähnliche Bibliotheken später für Analysefunktionen benötigt, ohne sie als Layoutengine zu verwenden?
 
 ---
 
 ## 16. Empfohlene Reihenfolge der nächsten konkreten Schritte
 
 1. Aktuellen Skia-R7-Stand als offizielle Renderbasis dokumentieren und Product-Demo-Leichen bereinigen.
-2. Scope-Policy, Link-Noise, Link-Routing und Viewport/Scrollbars in der Product Demo stabilisieren.
-3. SkiaGraphSurface-API/Bindings prüfen und entscheiden, was generischer Library-Vertrag wird und was Demo-/Host-Policy bleibt.
-4. Legacy-GraphCanvas separat bewerten: behalten, archivieren oder nach Step-Gate entfernen.
-5. Den allgemeinen Hostvertrag für Requests und Capabilities auf Skia-Hit-Testing und Interaktionsoverlays anwenden.
-6. Erst vor UserFlow-read-only den aktuellen UserFlow-Export liefern und dort ActionDefinition-Identität, Altprojekt-Migration, Editor-Identitätserhalt und UserFlow-View-State verbindlich entscheiden.
-7. Erst danach die vorhandene `FlowView` read-only füllen.
-8. Bearbeitung und neue Navigation erst nach dem read-only Abnahmetest aktivieren.
+2. CardMeasurePolicy, Text-Wrap, Ellipsis und Größenvertrag vor Graphviz verbindlich planen und danach prototypisch umsetzen.
+3. Scope-Policy, Link-Noise, Link-Routing und Viewport/Scrollbars in der Product Demo stabilisieren.
+4. SkiaGraphSurface-API/Bindings prüfen und entscheiden, was generischer Library-Vertrag wird und was Demo-/Host-Policy bleibt.
+5. Layout-Alternativen nur bei Bedarf als Adapter-Vergleich prüfen; kein Toolwechsel ohne Step-Gate.
+6. Legacy-GraphCanvas separat bewerten: behalten, archivieren oder nach Step-Gate entfernen.
+7. Den allgemeinen Hostvertrag für Requests und Capabilities auf Skia-Hit-Testing und Interaktionsoverlays anwenden.
+8. Erst vor UserFlow-read-only den aktuellen UserFlow-Export liefern und dort ActionDefinition-Identität, Altprojekt-Migration, Editor-Identitätserhalt und UserFlow-View-State verbindlich entscheiden.
+9. Erst danach die vorhandene `FlowView` read-only füllen.
+10. Bearbeitung und neue Navigation erst nach dem read-only Abnahmetest aktivieren.
 
 ---
 
@@ -1298,7 +1361,7 @@ Wichtig:
 - Jede Codeänderung nur auf Basis der aktuell bereitgestellten Dateien; komplette Dateien liefern, sofern kein Patch verlangt wird.
 - Nach jeder Phase: lokal bauen, relevante Tests ausführen, Ergebnis und offene Punkte berichten und auf Freigabe warten.
 
-Ziel der aktuellen Fortsetzung: SkiaGraphSurface, Scope-Policy, Viewport/Scrollbars, Link-Routing und Cleanup gemäß Phase 7 stabilisieren. Erst danach UserFlow-read-only vorbereiten.
+Ziel der aktuellen Fortsetzung: SkiaGraphSurface, CardMeasurePolicy/Text-Wrap, Scope-Policy, Viewport/Scrollbars, Link-Routing und Cleanup gemäß Phase 7 stabilisieren. Erst danach UserFlow-read-only vorbereiten.
 ```
 
 ### 17.3 Übergang in die UserFlow-Integration
@@ -1573,7 +1636,7 @@ Diese Revision ersetzt nicht den bisherigen Masterplantext, sondern legt ab jetz
 
 | Neue Phase | Titel | Inhalt |
 |---|---|---|
-| Phase 7 | Library-Finalisierung und Host-Integrationsreife | SkiaGraphSurface als aktive Renderbasis, öffentliche API, Hostvertrag, Request-/Result-Verhalten, View-State-Bindings, Scope-Policy, allgemeine Synchronisierung und Host-Neutralität härten. |
+| Phase 7 | Library-Finalisierung und Host-Integrationsreife | SkiaGraphSurface als aktive Renderbasis, öffentliche API, Hostvertrag, Request-/Result-Verhalten, View-State-Bindings, Scope-Policy, CardMeasurePolicy, Text-Wrap, allgemeine Synchronisierung und Host-Neutralität härten. |
 | Phase 8 | Allgemeine UX-/Demo-Abnahme | Product Demo ohne UserFlow verbessern, Skia-Hybridansicht absichern, Navigation, Fokus, Zoom/Pan/Scrollbars, Tree+Graph-Verhalten und größere Demo-Abnahme finalisieren. |
 | Phase 9 | Dokumentation, Packaging und Host-Onboarding | Integrationsdokumentation, Paket-/Referenzstruktur, Host-Beispiele, Übergabehinweise und Release-Vorbereitung erstellen. |
 | Phase 10 | UserFlow read-only Adapter und FlowView | Bisherige UserFlow-read-only-Phase. Visualisierung aktueller UserFlow-Daten ohne Mutation. |
@@ -1624,6 +1687,7 @@ Ziel:
 - View-State weiterhin host-owned halten.
 - Scope-Policy und Viewport/Scrollbar-Verhalten von Persistenz und Hostmodell trennen.
 - Keine projektspezifische Persistenz einführen.
+- Größen-, Wrap- und Card-Messregeln als eigene Policy von View-State und Hostpersistenz trennen.
 
 Abnahme:
 
@@ -1631,6 +1695,25 @@ Abnahme:
 - View-State kann vom Host gehalten und wieder angebunden werden.
 - Keine Spiegelkopien oder verdeckte Synchronisationslisten entstehen.
 - Legacy-GraphCanvas wird nicht weiter optisch ausgebaut.
+
+### P7-003a – GraphCardMeasurePolicy, Text-Wrap und Größenvertrag
+
+Ziel:
+
+- Einen verbindlichen Größenvertrag vor dem Graphviz-Layout festlegen.
+- Titel, Subtitle, Typzeile und optionale Metadaten mit Wrap-/Ellipsis-Regeln messen.
+- Pro ViewMode und NodeKind Mindest-/Maximalgrößen definieren.
+- `GraphLayoutNode.Bounds` als Layout-Ergebnis behandeln und nicht nachträglich wegen Textüberlauf vergrößern.
+- Core bleibt frei von WPF-, Skia- und Font-Messlogik.
+- Keine neue Layoutengine einführen.
+
+Abnahme:
+
+- Standard-, Popup-, Stub- und Detail-Karten schneiden Text nicht hart ab.
+- Wrap-Regeln sind reproduzierbar und lösen bei Größenänderung einen kontrollierten Rebuild aus.
+- Graphviz erhält dieselben Card-Größen, die Skia anschließend rendert.
+- Gruppen-, Link-, Hit-Test- und Scroll-Extents bleiben konsistent.
+- MSAGL/QuikGraph bleiben nur dokumentierte spätere Prüfoptionen, keine neue Dependency.
 
 ### P7-004 – NavigationPathTree/Graph-Sync allgemein absichern
 
@@ -1653,7 +1736,8 @@ Ziel:
 - Product Demo als allgemeine Referenz für spätere Hosts verbessern.
 - Read-only/editable-Modus, Requestfeedback, Hybridansicht, Skia-Scopes und allgemeine Testdaten klar darstellen.
 - Keine UserFlow-Daten verwenden.
-- Link-Routing, Link-Noise, Gruppenflächen und Kartenlayout weiter stabilisieren.
+- Link-Routing, Link-Noise, Gruppenflächen, Kartenlayout, Wrap und Textdichte weiter stabilisieren.
+- Bei Bedarf dokumentierten Vergleichspunkt für alternative Layoutadapter vorbereiten, aber keine neue Dependency ohne Step-Gate einführen.
 
 Abnahme:
 
