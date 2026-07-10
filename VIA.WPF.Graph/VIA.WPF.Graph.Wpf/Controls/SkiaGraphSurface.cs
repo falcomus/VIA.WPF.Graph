@@ -511,8 +511,8 @@ public sealed class SkiaGraphSurface : SKElement
             Style = SKPaintStyle.Stroke,
             StrokeWidth = 1.4f
         };
-        using SKPaint textPaint = CreateTextPaint(TextColor, 16f, fakeBold: true);
-        using SKPaint subTextPaint = CreateTextPaint(MutedTextColor, 12.5f, fakeBold: false);
+        using SkiaTextStyle textPaint = CreateTextPaint(TextColor, 16f, isBold: true);
+        using SkiaTextStyle subTextPaint = CreateTextPaint(MutedTextColor, 12.5f, isBold: false);
 
         SKRect card = new((width / 2f) - 190f, (height / 2f) - 58f, (width / 2f) + 190f, (height / 2f) + 58f);
         canvas.DrawRoundRect(card, 14f, 14f, cardPaint);
@@ -561,7 +561,7 @@ public sealed class SkiaGraphSurface : SKElement
             canvas.DrawRoundRect(paddedRect, 14f, 14f, fillPaint);
             canvas.DrawRoundRect(paddedRect, 14f, 14f, strokePaint);
 
-            using SKPaint titlePaint = CreateTextPaint(WithAlpha(isSelected ? SelectionColor : MutedTextColor, Math.Min(alpha, 0.9f)), 13f / (float)Math.Sqrt(Math.Max(Zoom, 0.55d)), fakeBold: true);
+            using SkiaTextStyle titlePaint = CreateTextPaint(WithAlpha(isSelected ? SelectionColor : MutedTextColor, Math.Min(alpha, 0.9f)), 13f / (float)Math.Sqrt(Math.Max(Zoom, 0.55d)), isBold: true);
             DrawTextClipped(canvas, group.Title, paddedRect.Left + 16f, paddedRect.Top + 21f, Math.Max(60f, paddedRect.Width - 32f), titlePaint);
         }
     }
@@ -764,9 +764,9 @@ public sealed class SkiaGraphSurface : SKElement
         float metaY = Math.Min(cardRect.Bottom - 13f, titleY + Math.Max(17f, cardRect.Height * 0.24f));
         float textWidth = Math.Max(36f, cardRect.Width - left + cardRect.Left - rightPadding);
 
-        using SKPaint typePaint = CreateTextPaint(WithAlpha(GetNodeTypeLabelColor(node, isSelected), alpha), typeSize, fakeBold: true);
-        using SKPaint titlePaint = CreateTextPaint(WithAlpha(TextColor, alpha), titleSize, fakeBold: true);
-        using SKPaint metaPaint = CreateTextPaint(WithAlpha(MutedTextColor, alpha), metaSize, fakeBold: false);
+        using SkiaTextStyle typePaint = CreateTextPaint(WithAlpha(GetNodeTypeLabelColor(node, isSelected), alpha), typeSize, isBold: true);
+        using SkiaTextStyle titlePaint = CreateTextPaint(WithAlpha(TextColor, alpha), titleSize, isBold: true);
+        using SkiaTextStyle metaPaint = CreateTextPaint(WithAlpha(MutedTextColor, alpha), metaSize, isBold: false);
 
         if (hasTypeLabel)
         {
@@ -828,7 +828,7 @@ public sealed class SkiaGraphSurface : SKElement
         }
 
         GraphPoint middle = points[points.Count / 2];
-        using SKPaint textPaint = CreateTextPaint(color, 10f / (float)Math.Sqrt(Math.Max(Zoom, 0.6d)), fakeBold: true);
+        using SkiaTextStyle textPaint = CreateTextPaint(color, 10f / (float)Math.Sqrt(Math.Max(Zoom, 0.6d)), isBold: true);
         float textWidth = textPaint.MeasureText(label);
         const float horizontalPadding = 10f;
         SKRect badgeRect = new(
@@ -1235,35 +1235,27 @@ public sealed class SkiaGraphSurface : SKElement
         return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
-    private static SKPaint CreateTextPaint(SKColor color, float size, bool fakeBold)
+    private static SkiaTextStyle CreateTextPaint(SKColor color, float size, bool isBold)
     {
-        return new SKPaint
-        {
-            IsAntialias = true,
-            Color = color,
-            Typeface = TextTypeface,
-            TextSize = size,
-            FakeBoldText = fakeBold,
-            SubpixelText = true
-        };
+        return new SkiaTextStyle(TextTypeface, size, color, isBold);
     }
 
-    private static void DrawTextClipped(SKCanvas canvas, string text, float x, float baselineY, float maxWidth, SKPaint paint)
+    private static void DrawTextClipped(SKCanvas canvas, string text, float x, float baselineY, float maxWidth, SkiaTextStyle textStyle)
     {
-        string clippedText = ClipTextToWidth(text, maxWidth, paint);
-        canvas.DrawText(clippedText, x, baselineY, paint);
+        string clippedText = ClipTextToWidth(text, maxWidth, textStyle);
+        textStyle.DrawText(canvas, clippedText, x, baselineY);
     }
 
-    private static void DrawTextVerticallyCentered(SKCanvas canvas, string text, float x, SKRect bounds, SKPaint paint)
+    private static void DrawTextVerticallyCentered(SKCanvas canvas, string text, float x, SKRect bounds, SkiaTextStyle textStyle)
     {
-        SKFontMetrics metrics = paint.FontMetrics;
+        SKFontMetrics metrics = textStyle.Font.Metrics;
         float baselineY = bounds.MidY - ((metrics.Ascent + metrics.Descent) / 2f);
-        canvas.DrawText(text, x, baselineY, paint);
+        textStyle.DrawText(canvas, text, x, baselineY);
     }
 
-    private static string ClipTextToWidth(string text, float maxWidth, SKPaint paint)
+    private static string ClipTextToWidth(string text, float maxWidth, SkiaTextStyle textStyle)
     {
-        if (string.IsNullOrEmpty(text) || paint.MeasureText(text) <= maxWidth)
+        if (string.IsNullOrEmpty(text) || textStyle.MeasureText(text) <= maxWidth)
         {
             return text;
         }
@@ -1273,7 +1265,7 @@ public sealed class SkiaGraphSurface : SKElement
         while (length > 1)
         {
             string candidate = text[..length] + ellipsis;
-            if (paint.MeasureText(candidate) <= maxWidth)
+            if (textStyle.MeasureText(candidate) <= maxWidth)
             {
                 return candidate;
             }
@@ -1547,3 +1539,4 @@ public sealed class SkiaGraphSurface : SKElement
         }
     }
 }
+

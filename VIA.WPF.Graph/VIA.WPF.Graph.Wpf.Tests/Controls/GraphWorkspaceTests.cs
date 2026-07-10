@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Media;
 using VIA.WPF.Graph.Core.Layout;
 using VIA.WPF.Graph.Core.Model;
 using VIA.WPF.Graph.Core.Requests;
@@ -20,7 +21,7 @@ public sealed class GraphWorkspaceTests
             Assert.NotNull(workspace.GraphSurface);
             Assert.NotNull(workspace.NavigationTree.GraphRequestCommand);
             Assert.NotNull(workspace.GraphSurface.GraphRequestCommand);
-            Assert.Contains(workspace.GraphSurface, workspace.Children.OfType<UIElement>());
+            Assert.Contains(workspace.GraphSurface, EnumerateVisualDescendants(workspace).OfType<SkiaGraphSurface>());
         });
     }
 
@@ -91,6 +92,22 @@ public sealed class GraphWorkspaceTests
         });
     }
 
+
+
+    private static IEnumerable<DependencyObject> EnumerateVisualDescendants(DependencyObject parent)
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(parent);
+        for (int index = 0; index < childCount; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(parent, index);
+            yield return child;
+
+            foreach (DependencyObject descendant in EnumerateVisualDescendants(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
 
     private sealed class RecordingGraphLayoutEngine : IGraphLayoutEngine
     {

@@ -2,7 +2,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using VIA.WPF.Graph.Core.Layout;
 using VIA.WPF.Graph.Core.Model;
-using VIA.WPF.Graph.Core.Projections;
 using VIA.WPF.Graph.Core.Requests;
 using VIA.WPF.Graph.Graphviz.Layout;
 
@@ -18,66 +17,20 @@ public partial class UIXDemoViewModel : ObservableObject
     private GraphDocument currentDocument;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(FooterText))]
-    private GraphLayoutResult currentLayout;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CurrentScopeText))]
-    [NotifyPropertyChangedFor(nameof(ModeText))]
-    [NotifyPropertyChangedFor(nameof(FooterText))]
-    private GraphDocument visibleDocument;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(FooterText))]
-    private GraphLayoutResult visibleLayout;
-
-    [ObservableProperty]
-    private GraphTreeProjection treeProjection;
-
-    public IReadOnlyList<ProductNavigationTreeItem> NavigationGroups { get; }
-
-    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModeText))]
     [NotifyPropertyChangedFor(nameof(CurrentScopeText))]
     [NotifyPropertyChangedFor(nameof(FooterText))]
-    private GraphViewMode activeViewMode = GraphViewMode.Focus;
+    private GraphViewState workspaceViewState = GraphViewState.Default;
+
+    [ObservableProperty]
+    private GraphLayoutDirection layoutDirection = GraphLayoutDirection.LeftToRight;
+
+    [ObservableProperty]
+    private GraphEdgeRoutingStyle edgeRoutingStyle = GraphEdgeRoutingStyle.Spline;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DensityButtonText))]
     private double visualDensity = 1d;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ZoomText))]
-    [NotifyPropertyChangedFor(nameof(FooterText))]
-    private double zoom = 1d;
-
-    [ObservableProperty]
-    private double panX;
-
-    [ObservableProperty]
-    private double panY;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ModeText))]
-    private bool isFreeNavigationEnabled;
-
-    [ObservableProperty]
-    private int fitRequestVersion;
-
-    [ObservableProperty]
-    private int centerRequestVersion;
-
-    [ObservableProperty]
-    private int actualSizeRequestVersion;
-
-    [ObservableProperty]
-    private string? selectedTreeNodeId;
-
-    [ObservableProperty]
-    private string? selectedNodeId;
-
-    [ObservableProperty]
-    private string? selectedLinkId;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedScreenTitle))]
@@ -98,6 +51,12 @@ public partial class UIXDemoViewModel : ObservableObject
     private IReadOnlyList<string> selectedGroupIds = Array.Empty<string>();
 
     [ObservableProperty]
+    private string? selectedNodeId;
+
+    [ObservableProperty]
+    private string? selectedLinkId;
+
+    [ObservableProperty]
     private string? focusedNodeId;
 
     [ObservableProperty]
@@ -110,28 +69,19 @@ public partial class UIXDemoViewModel : ObservableObject
             node => node.Id,
             node => CreateScreenInfo(node),
             StringComparer.Ordinal);
-
-        CurrentLayout = GraphvizLayoutEngine.Layout(
-            CurrentDocument,
-            new GraphLayoutOptions(GraphLayoutDirection.LeftToRight, GraphEdgeRoutingStyle.Spline));
-        VisibleDocument = CurrentDocument;
-        VisibleLayout = CurrentLayout;
-
-        TreeProjection = GraphTreeProjectionBuilder.Build(CurrentDocument, rootNodeId: "splash");
-        NavigationGroups = CreateNavigationGroups();
+        LayoutEngine = new GraphvizDemoLayoutEngine();
+        HostCapabilities = GraphHostCapabilities.ReadOnly();
         GraphRequestCommand = new RelayCommand<GraphRequest>(HandleGraphRequest);
-        SelectedNodeIds = ["splash"];
-        SelectedNodeId = "splash";
-        FocusedNodeId = "splash";
-        RebuildVisibleGraph();
-        RequestFit();
+        SetWorkspaceSelection("splash", GraphViewMode.Focus);
     }
+
+    public IGraphLayoutEngine LayoutEngine { get; }
+
+    public GraphHostCapabilities HostCapabilities { get; }
 
     public IRelayCommand<GraphRequest> GraphRequestCommand { get; }
 
     public string CountsText => $"{CurrentDocument.Nodes.Count} screens · {CurrentDocument.Links.Count} transitions · {CurrentDocument.Groups.Count} areas";
-
-    public string ZoomText => $"Zoom {Zoom:P0}";
 
     public string DensityButtonText => VisualDensity < 1d ? "Comfort" : "Compact";
 
@@ -139,61 +89,35 @@ public partial class UIXDemoViewModel : ObservableObject
     {
         get
         {
-            string scopeName = ActiveViewMode switch
+            string scopeName = WorkspaceViewState.ActiveViewMode switch
             {
-                GraphViewMode.GroupOverview => GetSelectedAreaTitle(),
                 GraphViewMode.Focus => "Focus",
-                GraphViewMode.Overview => "Branch",
+                GraphViewMode.Tree => "Branch",
+                GraphViewMode.Group or GraphViewMode.GroupOverview => GetSelectedAreaTitle(),
+                GraphViewMode.Overview => "Overview",
                 _ => "Diagnostic"
             };
 
-            return $"{scopeName} · {VisibleDocument.Nodes.Count} cards · {VisibleDocument.Links.Count} links";
+            return $"{scopeName} · {GetSelectedScopeSubjectText()}";
         }
     }
 
-    public string ModeText => ActiveViewMode switch
+    public string ModeText => WorkspaceViewState.ActiveViewMode switch
     {
-        GraphViewMode.GroupOverview => "Area view shows the selected screen area and its boundary transitions.",
-        GraphViewMode.Focus => "Focus view shows the selected screen and its direct navigation context.",
-        GraphViewMode.Overview => "Branch view expands the selected screen into a readable local branch.",
-        _ => "Diagnostic view shows the current scoped technical graph structure."
+        GraphViewMode.Group or GraphViewMode.GroupOverview => "Group Compact shows a limited, readable subset of the selected area. Full overview is explicit.",
+        GraphViewMode.Focus => "Focus shows the selected screen and direct navigation context.",
+        GraphViewMode.Tree => "Branch shows the selected screen, local path and direct alternatives.",
+        GraphViewMode.Overview => "Overview shows the complete graph intentionally.",
+        _ => "Diagnostic view shows the technical graph structure."
     };
 
-    public string SelectedScreenTitle
-    {
-        get
-        {
-            DemoScreenInfo info = GetSelectedScreenInfo();
-            return info.Title;
-        }
-    }
+    public string SelectedScreenTitle => GetSelectedScreenInfo().Title;
 
-    public string SelectedScreenSubtitle
-    {
-        get
-        {
-            DemoScreenInfo info = GetSelectedScreenInfo();
-            return info.Subtitle;
-        }
-    }
+    public string SelectedScreenSubtitle => GetSelectedScreenInfo().Subtitle;
 
-    public string SelectedPathText
-    {
-        get
-        {
-            DemoScreenInfo info = GetSelectedScreenInfo();
-            return info.PathHint;
-        }
-    }
+    public string SelectedPathText => GetSelectedScreenInfo().PathHint;
 
-    public string SelectedScreenAreaText
-    {
-        get
-        {
-            DemoScreenInfo info = GetSelectedScreenInfo();
-            return info.Area;
-        }
-    }
+    public string SelectedScreenAreaText => GetSelectedScreenInfo().Area;
 
     public string SelectedScreenKindText
     {
@@ -210,101 +134,11 @@ public partial class UIXDemoViewModel : ObservableObject
 
     public string SelectedOutgoingLinksText => DescribeLinks(GetOutgoingLinks(), incoming: false);
 
-    public string FooterText => $"{CountsText} · Scope {CurrentScopeText} · {ZoomText} · Selection {SelectedScreenTitle}";
+    public string FooterText => $"{CountsText} · Scope {CurrentScopeText} · Selection {SelectedScreenTitle}";
 
-    public void SelectNavigationTreeItem(ProductNavigationTreeItem? treeItem)
+    partial void OnWorkspaceViewStateChanged(GraphViewState value)
     {
-        if (treeItem is null)
-        {
-            return;
-        }
-
-        if (!treeItem.IsGroup
-            && !string.IsNullOrWhiteSpace(treeItem.NodeId)
-            && StringComparer.Ordinal.Equals(treeItem.TreeItemId, SelectedTreeNodeId)
-            && StringComparer.Ordinal.Equals(treeItem.NodeId, SelectedNodeId)
-            && SelectedNodeIds.Contains(treeItem.NodeId, StringComparer.Ordinal))
-        {
-            return;
-        }
-
-        SelectedTreeNodeId = treeItem.TreeItemId;
-
-        if (treeItem.IsGroup)
-        {
-            SelectGroupTreeItem(treeItem);
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(treeItem.NodeId))
-        {
-            return;
-        }
-
-        SelectNode(treeItem.NodeId, centerAfterSelection: false);
-        SelectedLinkId = treeItem.LinkId;
-        RebuildVisibleGraph();
-        RequestFit();
-    }
-
-    [RelayCommand]
-    private void ShowAreaOverview()
-    {
-        ActiveViewMode = GraphViewMode.GroupOverview;
-        FocusedNodeId = SelectedNodeIds.FirstOrDefault() ?? "splash";
-        FocusedGroupId = GetContainerGroupIdOrNull(FocusedNodeId);
-        IsFreeNavigationEnabled = false;
-        RebuildVisibleGraph();
-        RequestFit();
-    }
-
-    [RelayCommand]
-    private void ShowGraphOverview()
-    {
-        ActiveViewMode = GraphViewMode.Overview;
-        FocusedNodeId = SelectedNodeIds.FirstOrDefault() ?? "splash";
-        FocusedGroupId = null;
-        IsFreeNavigationEnabled = false;
-        RebuildVisibleGraph();
-        RequestFit();
-    }
-
-    [RelayCommand]
-    private void ShowFocus()
-    {
-        ActiveViewMode = GraphViewMode.Focus;
-        FocusedNodeId = SelectedNodeIds.FirstOrDefault() ?? "splash";
-        FocusedGroupId = null;
-        IsFreeNavigationEnabled = false;
-        RebuildVisibleGraph();
-        RequestFit();
-    }
-
-    [RelayCommand]
-    private void FitToGraph()
-    {
-        IsFreeNavigationEnabled = false;
-        RequestFit();
-    }
-
-    [RelayCommand]
-    private void SetActualSize()
-    {
-        IsFreeNavigationEnabled = true;
-        ActualSizeRequestVersion++;
-    }
-
-    [RelayCommand]
-    private void CenterGraph()
-    {
-        IsFreeNavigationEnabled = true;
-        RequestCenter();
-    }
-
-    [RelayCommand]
-    private void ToggleDensity()
-    {
-        VisualDensity = VisualDensity < 1d ? 1.08d : 0.82d;
+        ApplyWorkspaceViewState(value);
     }
 
     private void HandleGraphRequest(GraphRequest? request)
@@ -317,15 +151,8 @@ public partial class UIXDemoViewModel : ObservableObject
         switch (request.Kind)
         {
             case GraphRequestKind.SelectNode:
-                SelectVisibleNode(request.NodeId);
-                break;
-
             case GraphRequestKind.OpenNode:
-                SelectNode(request.NodeId, centerAfterSelection: false);
-                ActiveViewMode = GraphViewMode.Focus;
-                FocusedNodeId = request.NodeId;
-                RebuildVisibleGraph();
-                RequestFit();
+                SetWorkspaceSelection(request.NodeId, GraphViewMode.Focus);
                 break;
 
             case GraphRequestKind.SelectLink:
@@ -333,74 +160,40 @@ public partial class UIXDemoViewModel : ObservableObject
                 SelectLink(request.LinkId);
                 break;
 
+            case GraphRequestKind.SelectGroup:
+            case GraphRequestKind.OpenGroup:
+                SelectGroup(request.GroupId);
+                break;
+
             case GraphRequestKind.ClearSelection:
-                SelectedNodeIds = Array.Empty<string>();
-                SelectedLinkIds = Array.Empty<string>();
-                SelectedGroupIds = Array.Empty<string>();
-                SelectedNodeId = null;
-                SelectedLinkId = null;
-                FocusedNodeId = null;
-                FocusedGroupId = null;
-                SelectedTreeNodeId = null;
-                ClearNavigationTreeSelection(NavigationGroups);
+                ClearSelection();
                 break;
 
             case GraphRequestKind.ReturnToOverview:
-                ActiveViewMode = GraphViewMode.Overview;
-                FocusedNodeId = SelectedNodeIds.FirstOrDefault() ?? "splash";
-                FocusedGroupId = null;
-                RebuildVisibleGraph();
-                RequestFit();
+                SetWorkspaceSelection(GetSelectedNodeIdOrNull() ?? "splash", GraphViewMode.Overview);
                 break;
         }
     }
 
-    private void SelectVisibleNode(string? nodeId)
+    private void SetWorkspaceSelection(string? nodeId, GraphViewMode viewMode)
     {
         if (string.IsNullOrWhiteSpace(nodeId))
         {
             return;
         }
 
-        SelectedNodeIds = [nodeId];
-        SelectedLinkIds = Array.Empty<string>();
-        SelectedGroupIds = Array.Empty<string>();
-        SelectedNodeId = nodeId;
-        SelectedLinkId = null;
-        FocusedNodeId = nodeId;
-        SelectNavigationTreeNode(nodeId);
-    }
+        string? groupId = viewMode is GraphViewMode.Group or GraphViewMode.GroupOverview
+            ? GetContainerGroupIdOrNull(nodeId)
+            : null;
 
-    private void SelectNode(string? nodeId, bool centerAfterSelection)
-    {
-        if (string.IsNullOrWhiteSpace(nodeId))
-        {
-            return;
-        }
-
-        SelectedNodeIds = [nodeId];
-        SelectedLinkIds = Array.Empty<string>();
-        SelectedGroupIds = Array.Empty<string>();
-        SelectedNodeId = nodeId;
-        SelectedLinkId = null;
-        FocusedNodeId = nodeId;
-
-        if (ActiveViewMode == GraphViewMode.GroupOverview)
-        {
-            FocusedGroupId = GetContainerGroupIdOrNull(nodeId);
-        }
-        else
-        {
-            ActiveViewMode = GraphViewMode.Focus;
-            FocusedGroupId = null;
-        }
-
-        RebuildVisibleGraph();
-
-        if (centerAfterSelection)
-        {
-            RequestCenter();
-        }
+        WorkspaceViewState = new GraphViewState(
+            viewMode,
+            nodeId,
+            groupId,
+            new GraphSelectionState(selectedNodeIds: [nodeId]),
+            WorkspaceViewState.Viewport,
+            WorkspaceViewState.CollapsedContainerGroupIds,
+            WorkspaceViewState.ExpandedTreeItemIds);
     }
 
     private void SelectLink(string? linkId)
@@ -410,304 +203,83 @@ public partial class UIXDemoViewModel : ObservableObject
             return;
         }
 
-        SelectedNodeIds = Array.Empty<string>();
-        SelectedLinkIds = [linkId];
-        SelectedLinkId = linkId;
-        RebuildVisibleGraph();
+        GraphLink? link = CurrentDocument.Links.FirstOrDefault(candidate => StringComparer.Ordinal.Equals(candidate.Id, linkId));
+        string? activeNodeId = WorkspaceViewState.ActiveNodeId ?? link?.SourceNodeId ?? GetSelectedNodeIdOrNull();
+        WorkspaceViewState = new GraphViewState(
+            WorkspaceViewState.ActiveViewMode == GraphViewMode.Overview ? GraphViewMode.Overview : GraphViewMode.Focus,
+            activeNodeId,
+            null,
+            new GraphSelectionState(selectedLinkIds: [linkId]),
+            WorkspaceViewState.Viewport,
+            WorkspaceViewState.CollapsedContainerGroupIds,
+            WorkspaceViewState.ExpandedTreeItemIds);
     }
 
-    private void SelectNavigationTreeNode(string nodeId)
+    private void SelectGroup(string? groupId)
     {
-        ProductNavigationTreeItem? treeItem = FindPreferredNavigationTreeItem(nodeId);
-        if (treeItem is null)
-        {
-            return;
-        }
-
-        ClearNavigationTreeSelection(NavigationGroups);
-        ExpandNavigationTreeAncestors(NavigationGroups, treeItem.TreeItemId);
-        SelectedTreeNodeId = treeItem.TreeItemId;
-        treeItem.IsSelected = true;
-    }
-
-    private ProductNavigationTreeItem? FindPreferredNavigationTreeItem(string nodeId)
-    {
-        ProductNavigationTreeItem? fallbackReferenceItem = null;
-
-        foreach (ProductNavigationTreeItem item in EnumerateNavigationTreeItems(NavigationGroups))
-        {
-            if (!StringComparer.Ordinal.Equals(item.NodeId, nodeId))
-            {
-                continue;
-            }
-
-            if (!item.IsReference)
-            {
-                return item;
-            }
-
-            fallbackReferenceItem ??= item;
-        }
-
-        return fallbackReferenceItem;
-    }
-
-    private static IEnumerable<ProductNavigationTreeItem> EnumerateNavigationTreeItems(IEnumerable<ProductNavigationTreeItem> items)
-    {
-        foreach (ProductNavigationTreeItem item in items)
-        {
-            yield return item;
-
-            foreach (ProductNavigationTreeItem child in EnumerateNavigationTreeItems(item.Children))
-            {
-                yield return child;
-            }
-        }
-    }
-
-    private static void ClearNavigationTreeSelection(IEnumerable<ProductNavigationTreeItem> items)
-    {
-        foreach (ProductNavigationTreeItem item in items)
-        {
-            item.IsSelected = false;
-            ClearNavigationTreeSelection(item.Children);
-        }
-    }
-
-    private static bool ExpandNavigationTreeAncestors(IEnumerable<ProductNavigationTreeItem> items, string treeItemId)
-    {
-        foreach (ProductNavigationTreeItem item in items)
-        {
-            if (StringComparer.Ordinal.Equals(item.TreeItemId, treeItemId))
-            {
-                return true;
-            }
-
-            if (ExpandNavigationTreeAncestors(item.Children, treeItemId))
-            {
-                item.IsExpanded = true;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    partial void OnActiveViewModeChanged(GraphViewMode value)
-    {
-        RebuildVisibleGraph();
-    }
-
-    partial void OnSelectedNodeIdChanged(string? value)
-    {
-        if (!string.IsNullOrWhiteSpace(value) && !SelectedNodeIds.Contains(value, StringComparer.Ordinal))
-        {
-            SelectedNodeIds = [value];
-        }
-    }
-
-    partial void OnSelectedLinkIdChanged(string? value)
-    {
-        if (!string.IsNullOrWhiteSpace(value) && !SelectedLinkIds.Contains(value, StringComparer.Ordinal))
-        {
-            SelectedLinkIds = [value];
-        }
-    }
-
-    private void SelectGroupTreeItem(ProductNavigationTreeItem treeItem)
-    {
-        string? groupId = ResolveContainerGroupIdFromTreeItem(treeItem);
         if (string.IsNullOrWhiteSpace(groupId))
         {
             return;
         }
 
-        string? firstNodeId = CurrentDocument.Nodes
-            .FirstOrDefault(node => node.GroupMemberships.Contains(groupId, StringComparer.Ordinal))
-            ?.Id;
-
-        SelectedGroupIds = [groupId];
-        FocusedGroupId = groupId;
-        if (!string.IsNullOrWhiteSpace(firstNodeId))
-        {
-            SelectedNodeIds = [firstNodeId];
-            SelectedNodeId = firstNodeId;
-            FocusedNodeId = firstNodeId;
-        }
-
-        SelectedLinkIds = Array.Empty<string>();
-        SelectedLinkId = null;
-        ActiveViewMode = GraphViewMode.GroupOverview;
-        IsFreeNavigationEnabled = false;
-        RebuildVisibleGraph();
-        RequestFit();
+        string? firstNodeId = CurrentDocument.Nodes.FirstOrDefault(node => node.GroupMemberships.Contains(groupId, StringComparer.Ordinal))?.Id;
+        WorkspaceViewState = new GraphViewState(
+            GraphViewMode.Group,
+            firstNodeId,
+            groupId,
+            new GraphSelectionState(
+                selectedNodeIds: string.IsNullOrWhiteSpace(firstNodeId) ? null : [firstNodeId],
+                selectedGroupIds: [groupId]),
+            WorkspaceViewState.Viewport,
+            WorkspaceViewState.CollapsedContainerGroupIds,
+            WorkspaceViewState.ExpandedTreeItemIds);
     }
 
-    private void RebuildVisibleGraph()
+    private void ClearSelection()
     {
-        string selectedNodeId = ResolveSelectedNodeId();
-        GraphDocument scopedDocument = CreateScopedDocument(selectedNodeId);
-        VisibleDocument = scopedDocument;
-        VisibleLayout = GraphvizLayoutEngine.Layout(
-            scopedDocument,
-            new GraphLayoutOptions(GraphLayoutDirection.LeftToRight, GraphEdgeRoutingStyle.Spline));
+        WorkspaceViewState = new GraphViewState(
+            GraphViewMode.Overview,
+            viewport: WorkspaceViewState.Viewport,
+            collapsedContainerGroupIds: WorkspaceViewState.CollapsedContainerGroupIds,
+            expandedTreeItemIds: WorkspaceViewState.ExpandedTreeItemIds);
     }
 
-    private GraphDocument CreateScopedDocument(string selectedNodeId)
+    private void ApplyWorkspaceViewState(GraphViewState value)
     {
-        HashSet<string> nodeIds = ActiveViewMode switch
-        {
-            GraphViewMode.GroupOverview => ResolveAreaScopeNodeIds(selectedNodeId),
-            GraphViewMode.Overview => ResolveBranchScopeNodeIds(selectedNodeId),
-            _ => ResolveFocusScopeNodeIds(selectedNodeId),
-        };
-
-        IncludeSelectedLinkEndpoints(nodeIds);
-        return CreateDocumentFromNodeIds(nodeIds, selectedNodeId);
+        SelectedNodeIds = value.Selection.SelectedNodeIds;
+        SelectedLinkIds = value.Selection.SelectedLinkIds;
+        SelectedGroupIds = value.Selection.SelectedGroupIds;
+        SelectedNodeId = value.ActiveNodeId ?? value.Selection.SelectedNodeIds.FirstOrDefault();
+        SelectedLinkId = value.Selection.SelectedLinkIds.FirstOrDefault();
+        FocusedNodeId = value.ActiveNodeId;
+        FocusedGroupId = value.ActiveGroupId;
+        OnPropertyChanged(nameof(CurrentScopeText));
+        OnPropertyChanged(nameof(ModeText));
+        OnPropertyChanged(nameof(SelectedScreenTitle));
+        OnPropertyChanged(nameof(SelectedScreenSubtitle));
+        OnPropertyChanged(nameof(SelectedPathText));
+        OnPropertyChanged(nameof(SelectedScreenAreaText));
+        OnPropertyChanged(nameof(SelectedScreenKindText));
+        OnPropertyChanged(nameof(SelectedIncomingLinksText));
+        OnPropertyChanged(nameof(SelectedOutgoingLinksText));
+        OnPropertyChanged(nameof(FooterText));
     }
 
-    private HashSet<string> ResolveFocusScopeNodeIds(string selectedNodeId)
+    private string GetSelectedScopeSubjectText()
     {
-        HashSet<string> nodeIds = new(StringComparer.Ordinal)
+        string? nodeId = GetSelectedNodeIdOrNull();
+        if (!string.IsNullOrWhiteSpace(nodeId))
         {
-            selectedNodeId
-        };
-
-        foreach (GraphLink link in CurrentDocument.Links.Where(link => IsDirectLink(link, selectedNodeId) && IsQuietNavigationLink(link)))
-        {
-            nodeIds.Add(link.SourceNodeId);
-            nodeIds.Add(link.TargetNodeId);
+            return GetNodeTitle(nodeId);
         }
 
-        return nodeIds;
-    }
-
-    private HashSet<string> ResolveBranchScopeNodeIds(string selectedNodeId)
-    {
-        HashSet<string> nodeIds = ResolveFocusScopeNodeIds(selectedNodeId);
-        string[] firstHopNodeIds = nodeIds.ToArray();
-
-        foreach (string nodeId in firstHopNodeIds)
+        string? groupId = WorkspaceViewState.ActiveGroupId ?? WorkspaceViewState.Selection.SelectedGroupIds.FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(groupId))
         {
-            foreach (GraphLink link in CurrentDocument.Links.Where(link => IsForwardBranchLink(link, nodeId)))
-            {
-                nodeIds.Add(link.SourceNodeId);
-                nodeIds.Add(link.TargetNodeId);
-                if (nodeIds.Count >= 22)
-                {
-                    return nodeIds;
-                }
-            }
+            return CurrentDocument.Groups.FirstOrDefault(group => StringComparer.Ordinal.Equals(group.Id, groupId))?.Title ?? groupId;
         }
 
-        return nodeIds;
-    }
-
-    private HashSet<string> ResolveAreaScopeNodeIds(string selectedNodeId)
-    {
-        HashSet<string> nodeIds = new(StringComparer.Ordinal);
-        string? containerGroupId = FocusedGroupId ?? GetContainerGroupIdOrNull(selectedNodeId);
-        if (string.IsNullOrWhiteSpace(containerGroupId))
-        {
-            return ResolveFocusScopeNodeIds(selectedNodeId);
-        }
-
-        foreach (GraphNode node in CurrentDocument.Nodes.Where(node => node.GroupMemberships.Contains(containerGroupId, StringComparer.Ordinal)))
-        {
-            nodeIds.Add(node.Id);
-        }
-
-        string[] areaNodeIds = nodeIds.ToArray();
-        foreach (GraphLink link in CurrentDocument.Links)
-        {
-            bool sourceInArea = areaNodeIds.Contains(link.SourceNodeId, StringComparer.Ordinal);
-            bool targetInArea = areaNodeIds.Contains(link.TargetNodeId, StringComparer.Ordinal);
-            if ((sourceInArea || targetInArea) && IsQuietNavigationLink(link))
-            {
-                nodeIds.Add(link.SourceNodeId);
-                nodeIds.Add(link.TargetNodeId);
-            }
-        }
-
-        return nodeIds;
-    }
-
-    private GraphDocument CreateDocumentFromNodeIds(HashSet<string> nodeIds, string selectedNodeId)
-    {
-        if (nodeIds.Count == 0)
-        {
-            nodeIds.Add(selectedNodeId);
-        }
-
-        GraphNode[] nodes = CurrentDocument.Nodes
-            .Where(node => nodeIds.Contains(node.Id))
-            .ToArray();
-
-        GraphLink[] links = CurrentDocument.Links
-            .Where(link => ShouldIncludeScopedLink(link, nodeIds, selectedNodeId))
-            .ToArray();
-
-        GraphGroup[] groups = ResolveScopedGroups(selectedNodeId);
-
-        string scopeId = ActiveViewMode switch
-        {
-            GraphViewMode.GroupOverview => $"area-{FocusedGroupId ?? GetContainerGroupIdOrNull(selectedNodeId) ?? selectedNodeId}",
-            GraphViewMode.Overview => $"branch-{selectedNodeId}",
-            _ => $"focus-{selectedNodeId}"
-        };
-
-        return new GraphDocument(
-            $"{CurrentDocument.Id}-{scopeId}",
-            nodes,
-            links,
-            CurrentDocument.Metadata,
-            groups);
-    }
-
-    private GraphGroup[] ResolveScopedGroups(string selectedNodeId)
-    {
-        string? containerGroupId = ActiveViewMode == GraphViewMode.GroupOverview
-            ? FocusedGroupId ?? GetContainerGroupIdOrNull(selectedNodeId)
-            : GetContainerGroupIdOrNull(selectedNodeId);
-
-        if (string.IsNullOrWhiteSpace(containerGroupId))
-        {
-            return [];
-        }
-
-        return CurrentDocument.Groups
-            .Where(group => group.Kind == GraphGroupKind.Container && StringComparer.Ordinal.Equals(group.Id, containerGroupId))
-            .ToArray();
-    }
-
-    private void IncludeSelectedLinkEndpoints(HashSet<string> nodeIds)
-    {
-        string? selectedLinkId = SelectedLinkIds.FirstOrDefault() ?? SelectedLinkId;
-        if (string.IsNullOrWhiteSpace(selectedLinkId))
-        {
-            return;
-        }
-
-        GraphLink? selectedLink = CurrentDocument.Links.FirstOrDefault(link => StringComparer.Ordinal.Equals(link.Id, selectedLinkId));
-        if (selectedLink is null)
-        {
-            return;
-        }
-
-        nodeIds.Add(selectedLink.SourceNodeId);
-        nodeIds.Add(selectedLink.TargetNodeId);
-    }
-
-    private string ResolveSelectedNodeId()
-    {
-        string? selectedNodeId = GetSelectedNodeIdOrNull();
-        if (!string.IsNullOrWhiteSpace(selectedNodeId)
-            && CurrentDocument.Nodes.Any(node => StringComparer.Ordinal.Equals(node.Id, selectedNodeId)))
-        {
-            return selectedNodeId;
-        }
-
-        return CurrentDocument.Nodes.FirstOrDefault()?.Id ?? "splash";
+        return "no active selection";
     }
 
     private string? GetContainerGroupIdOrNull(string? nodeId)
@@ -724,83 +296,14 @@ public partial class UIXDemoViewModel : ObservableObject
 
     private string GetSelectedAreaTitle()
     {
-        string selectedNodeId = ResolveSelectedNodeId();
-        string? groupId = FocusedGroupId ?? GetContainerGroupIdOrNull(selectedNodeId);
+        string? groupId = WorkspaceViewState.ActiveGroupId
+            ?? WorkspaceViewState.Selection.SelectedGroupIds.FirstOrDefault()
+            ?? GetContainerGroupIdOrNull(GetSelectedNodeIdOrNull());
         GraphGroup? group = string.IsNullOrWhiteSpace(groupId)
             ? null
             : CurrentDocument.Groups.FirstOrDefault(candidate => StringComparer.Ordinal.Equals(candidate.Id, groupId));
 
-        return group is null ? "Area" : group.Title;
-    }
-
-    private static string? ResolveContainerGroupIdFromTreeItem(ProductNavigationTreeItem treeItem)
-    {
-        return treeItem.TreeItemId switch
-        {
-            "group-entry" => "entry",
-            "group-home" => "home_area",
-            "group-shop" => "shop",
-            "group-checkout" => "checkout_area",
-            "group-account" => "account",
-            "group-support" => "support",
-            "group-external" => "external",
-            _ => null
-        };
-    }
-
-    private static bool IsDirectLink(GraphLink link, string nodeId)
-    {
-        return StringComparer.Ordinal.Equals(link.SourceNodeId, nodeId)
-            || StringComparer.Ordinal.Equals(link.TargetNodeId, nodeId);
-    }
-
-    private static bool IsForwardBranchLink(GraphLink link, string sourceNodeId)
-    {
-        return StringComparer.Ordinal.Equals(link.SourceNodeId, sourceNodeId)
-            && IsQuietNavigationLink(link);
-    }
-
-    private bool ShouldIncludeScopedLink(GraphLink link, IReadOnlySet<string> nodeIds, string selectedNodeId)
-    {
-        if (!nodeIds.Contains(link.SourceNodeId) || !nodeIds.Contains(link.TargetNodeId))
-        {
-            return false;
-        }
-
-        string? selectedLinkId = SelectedLinkIds.FirstOrDefault() ?? SelectedLinkId;
-        if (!string.IsNullOrWhiteSpace(selectedLinkId) && StringComparer.Ordinal.Equals(link.Id, selectedLinkId))
-        {
-            return true;
-        }
-
-        if (!IsQuietNavigationLink(link))
-        {
-            return false;
-        }
-
-        if (ActiveViewMode == GraphViewMode.Focus)
-        {
-            return IsDirectLink(link, selectedNodeId);
-        }
-
-        return true;
-    }
-
-    private static bool IsQuietNavigationLink(GraphLink link)
-    {
-        return link.Kind is GraphLinkKind.Primary
-            or GraphLinkKind.Secondary
-            or GraphLinkKind.PopupOpen;
-    }
-
-    private void RequestFit()
-    {
-        FitRequestVersion++;
-    }
-
-    private void RequestCenter()
-    {
-        CenterRequestVersion++;
+        return group is null ? "Group" : group.Title;
     }
 
     private DemoScreenInfo GetSelectedScreenInfo()
@@ -814,14 +317,17 @@ public partial class UIXDemoViewModel : ObservableObject
         return new DemoScreenInfo(
             "No screen selected",
             "Select a screen in the navigation tree or graph.",
-            "The graph preview follows the current selection.",
+            "The graph preview follows the current workspace selection.",
             "None",
             "No active screen");
     }
 
     private string? GetSelectedNodeIdOrNull()
     {
-        return SelectedNodeIds.FirstOrDefault() ?? SelectedNodeId;
+        return SelectedNodeIds.FirstOrDefault()
+            ?? SelectedNodeId
+            ?? WorkspaceViewState.ActiveNodeId
+            ?? WorkspaceViewState.Selection.SelectedNodeIds.FirstOrDefault();
     }
 
     private IEnumerable<GraphLink> GetIncomingLinks()
@@ -907,251 +413,6 @@ public partial class UIXDemoViewModel : ObservableObject
             "support_popup" => new DemoScreenInfo("Support popup", "Lightweight contextual overlay for immediate help options.", "Any important screen → Support popup → Source", "Support", "Popup"),
             _ => new DemoScreenInfo(node.Title, node.Description ?? "Demo screen.", node.Id, "Demo", node.Kind.ToString())
         };
-    }
-
-    private static IReadOnlyList<ProductNavigationTreeItem> CreateNavigationGroups()
-    {
-        return
-        [
-            Group(
-                "group-entry",
-                "Entry",
-                "Launch, authentication and first-run setup",
-                "6",
-                true,
-                Screen("splash", "Splash", "Launch and restore session", "Start", "splash", null, true,
-                    Screen("login", "Login", "Authentication hub", "Main", "login", "splash_login", true,
-                        Screen("register", "Register", "Create account", "Alt", "register", "login_register", true,
-                            Screen("verify_email", "Verify email", "Confirm account", "Main", "verify_email", "register_verify_email", true,
-                                Screen("onboarding", "Onboarding", "First-run setup", "Main", "onboarding", "verify_email_onboarding"),
-                                Reference("home_from_onboarding", "Home", "Setup completion target", "Main", "home", "onboarding_home"))),
-                        Screen("forgot_password", "Forgot password", "Recovery flow", "Alt", "forgot_password", "login_forgot_password",
-                            false, Reference("login_from_forgot", "Login", "Recovery return", "Back", "login", "forgot_password_login")),
-                        Reference("home_from_login", "Home", "Signed-in target", "Main", "home", "login_home")))),
-
-            Group(
-                "group-home",
-                "Home",
-                "Dashboard, discovery shortcuts and service entry points",
-                "7",
-                true,
-                Screen("home_hub", "Home", "Personal dashboard and hub", "Hub", "home", null, true,
-                    Screen("feed_from_home", "For you", "Personalized content", "Main", "feed", "home_feed", true,
-                        Reference("product_list_from_feed", "Product list", "Promoted collection", "Main", "product_list", "feed_product_list")),
-                    Screen("search_from_home", "Search", "Find products", "Main", "search", "home_search"),
-                    Screen("categories_from_home", "Categories", "Browse departments", "Alt", "categories", "home_categories"),
-                    Screen("campaign_from_home", "Campaign landing", "Seasonal offer page", "Alt", "campaign_landing", "home_campaign"),
-                    Screen("wishlist_from_home", "Wishlist", "Saved products", "Alt", "wishlist", "home_wishlist"),
-                    Screen("profile_from_home", "Profile", "Account hub", "Alt", "profile", "home_profile"),
-                    Screen("help_from_home", "Help center", "Support entry", "Alt", "help_center", "home_help_center"))),
-
-            Group(
-                "group-shop",
-                "Shop",
-                "Search, browse, detail and conversion paths",
-                "10",
-                true,
-                Screen("search", "Search", "Query, filters and suggestions", "Main", "search", "home_search",
-                    false, Screen("product_list_from_search", "Product list", "Filtered results", "Main", "product_list", "search_product_list", true,
-                        Screen("product_details_from_list", "Product details", "Conversion screen", "Main", "product_details", "product_list_product_details", true,
-                            Screen("product_images", "Product images", "Gallery preview", "Alt", "product_images", "product_details_images",
-                                false, Reference("product_details_from_images", "Product details", "Back to detail", "Back", "product_details", "product_images_product_details")),
-                            Screen("reviews", "Reviews", "Ratings and comments", "Alt", "reviews", "product_details_reviews",
-                                false, Reference("product_details_from_reviews", "Product details", "Back to detail", "Back", "product_details", "reviews_product_details")),
-                            Screen("variant_selector", "Variant selector", "Size and color", "Main", "variant_selector", "product_details_variant",
-                                false, Reference("product_details_from_variant", "Product details", "Apply selection", "Back", "product_details", "variant_product_details")),
-                            Screen("availability", "Availability", "Pickup and delivery check", "Alt", "availability", "product_details_availability",
-                                false, Reference("cart_from_availability", "Cart", "Available item target", "Main", "cart", "availability_cart")),
-                            Screen("recommendations", "Recommendations", "Related products", "Alt", "recommendations", "product_details_recommendations",
-                                false, Reference("product_details_from_recommendations", "Product details", "Open related product", "Ref", "product_details", "recommendations_product_details")),
-                            Screen("wishlist_from_details", "Wishlist", "Save for later", "Alt", "wishlist", "product_details_wishlist",
-                                false, Reference("product_details_from_wishlist", "Product details", "Open saved product", "Ref", "product_details", "wishlist_product_details")),
-                            Reference("cart_from_details", "Cart", "Add-to-cart target", "Main", "cart", "product_details_cart")))),
-                Screen("categories", "Categories", "Alternative browse path", "Alt", "categories", "home_categories",
-                    false, Reference("product_list_from_categories", "Product list", "Category results", "Main", "product_list", "categories_product_list")),
-                Screen("campaign_landing", "Campaign landing", "Seasonal products", "Alt", "campaign_landing", "home_campaign",
-                    false, Reference("product_list_from_campaign", "Product list", "Campaign results", "Main", "product_list", "campaign_product_list"))),
-
-            Group(
-                "group-checkout",
-                "Checkout",
-                "Basket, promotion, shipping, payment and confirmation",
-                "9",
-                true,
-                Screen("cart", "Cart", "Items, quantities and checkout", "Main", "cart", "product_details_cart", true,
-                    Screen("coupon", "Coupon", "Discount code validation", "Alt", "coupon", "cart_coupon",
-                        false, Reference("cart_from_coupon", "Cart", "Discount applied", "Back", "cart", "coupon_cart")),
-                    Screen("address", "Address", "Shipping address", "Main", "address", "cart_address", true,
-                        Screen("delivery", "Delivery", "Slot and method", "Main", "delivery", "address_delivery", true,
-                            Screen("payment", "Payment", "Payment method", "Main", "payment", "delivery_payment", true,
-                                External("payment_provider", "Payment provider", "External authorization", "Ext", "payment_provider", "payment_provider_external"),
-                                Screen("order_review", "Order review", "Final check", "Main", "order_review", "payment_order_review", true,
-                                    Reference("cart_from_review", "Cart", "Change cart", "Back", "cart", "order_review_cart"),
-                                    Screen("order_confirmation", "Order confirmation", "Success and next steps", "Main", "order_confirmation", "order_review_confirmation", false,
-                                        Reference("orders_from_confirmation", "Orders", "View order", "Alt", "orders", "confirmation_orders"),
-                                        Reference("home_from_confirmation", "Home", "Back home", "Alt", "home", "confirmation_home")))))))),
-
-            Group(
-                "group-account",
-                "Account",
-                "Profile, order history, documents and preferences",
-                "9",
-                false,
-                Screen("profile", "Profile", "Account overview", "Hub", "profile", "home_profile", true,
-                    Screen("orders", "Orders", "Order history", "Main", "orders", "profile_orders", true,
-                        Screen("order_details", "Order details", "Shipment and invoice", "Main", "order_details", "orders_order_details", true,
-                            External("shipment_tracking", "Shipment tracking", "Carrier tracking", "Ext", "shipment_tracking", "order_details_tracking"),
-                            Screen("returns", "Return request", "Return item", "Alt", "returns", "order_details_returns", true,
-                                Screen("return_label", "Return label", "Drop-off document", "Main", "return_label", "returns_return_label",
-                                    false, Reference("orders_from_return_label", "Orders", "Back to history", "Back", "orders", "return_label_orders"))))),
-                    Screen("invoices", "Invoices", "PDF documents", "Alt", "invoices", "profile_invoices"),
-                    Screen("account_addresses", "Saved addresses", "Manage addresses", "Alt", "account_addresses", "profile_addresses"),
-                    Screen("payment_methods", "Payment methods", "Manage cards and wallets", "Alt", "payment_methods", "profile_payment_methods"),
-                    Screen("settings", "Settings", "Preferences", "Alt", "settings", "profile_settings",
-                        false, Reference("profile_from_settings", "Profile", "Back reference", "Back", "profile", "settings_profile")))),
-
-            Group(
-                "group-support",
-                "Support",
-                "Self service, chat, contact and contextual help",
-                "7",
-                false,
-                Screen("help_center", "Help center", "Support hub", "Hub", "help_center", "home_help_center", true,
-                    Screen("faq", "FAQ", "Self-service topics", "Main", "faq", "help_faq",
-                        false, Reference("help_from_faq", "Help center", "Back to help", "Back", "help_center", "faq_help")),
-                    Screen("support_chat", "Support chat", "Live or bot chat", "Alt", "support_chat", "help_chat", true,
-                        Screen("ticket_details_from_chat", "Ticket details", "Case timeline", "Main", "ticket_details", "chat_ticket_details",
-                            false, Reference("help_from_ticket_chat", "Help center", "Back to help", "Back", "help_center", "ticket_help"))),
-                    Screen("contact_form", "Contact form", "Structured request", "Alt", "contact_form", "help_contact_form", true,
-                        Screen("ticket_details_from_contact", "Ticket details", "Created support case", "Main", "ticket_details", "contact_ticket_details",
-                            false, Reference("help_from_ticket_contact", "Help center", "Back to help", "Back", "help_center", "ticket_help"))),
-                    Popup("support_popup", "Support popup", "Contextual overlay", "Popup", "support_popup", "help_support_popup",
-                        false, Reference("help_from_popup", "Help center", "Close overlay", "Close", "help_center", "support_popup_help")))),
-
-            Group(
-                "group-external",
-                "External",
-                "Boundaries to systems outside the app",
-                "2",
-                false,
-                External("external_payment_provider", "Payment provider", "Authorization boundary", "Ext", "payment_provider", "payment_provider_external"),
-                External("external_shipment_tracking", "Shipment tracking", "Carrier tracking boundary", "Ext", "shipment_tracking", "order_details_tracking"))
-        ];
-    }
-
-    private static ProductNavigationTreeItem Group(
-        string treeItemId,
-        string title,
-        string subtitle,
-        string badgeText,
-        bool isExpanded,
-        params ProductNavigationTreeItem[] children)
-    {
-        return new ProductNavigationTreeItem(
-            treeItemId,
-            title,
-            subtitle,
-            badgeText,
-            "Group",
-            null,
-            null,
-            true,
-            isExpanded,
-            children);
-    }
-
-    private static ProductNavigationTreeItem Screen(
-        string treeItemId,
-        string title,
-        string subtitle,
-        string badgeText,
-        string nodeId,
-        string? linkId,
-        bool isExpanded = false,
-        params ProductNavigationTreeItem[] children)
-    {
-        return new ProductNavigationTreeItem(
-            treeItemId,
-            title,
-            subtitle,
-            badgeText,
-            "Screen",
-            nodeId,
-            linkId,
-            false,
-            isExpanded,
-            children);
-    }
-
-    private static ProductNavigationTreeItem Reference(
-        string treeItemId,
-        string title,
-        string subtitle,
-        string badgeText,
-        string nodeId,
-        string? linkId)
-    {
-        return new ProductNavigationTreeItem(
-            treeItemId,
-            title,
-            subtitle,
-            badgeText,
-            "Ref",
-            nodeId,
-            linkId,
-            false,
-            false,
-            [],
-            true);
-    }
-
-    private static ProductNavigationTreeItem Popup(
-        string treeItemId,
-        string title,
-        string subtitle,
-        string badgeText,
-        string nodeId,
-        string? linkId,
-        bool isExpanded = false,
-        params ProductNavigationTreeItem[] children)
-    {
-        return new ProductNavigationTreeItem(
-            treeItemId,
-            title,
-            subtitle,
-            badgeText,
-            "Popup",
-            nodeId,
-            linkId,
-            false,
-            isExpanded,
-            children,
-            false,
-            true);
-    }
-
-    private static ProductNavigationTreeItem External(
-        string treeItemId,
-        string title,
-        string subtitle,
-        string badgeText,
-        string nodeId,
-        string? linkId)
-    {
-        return new ProductNavigationTreeItem(
-            treeItemId,
-            title,
-            subtitle,
-            badgeText,
-            "Ext",
-            nodeId,
-            linkId,
-            false,
-            false,
-            [],
-            false,
-            false,
-            true);
     }
 
     private static GraphDocument CreateDemoDocument()
@@ -1326,179 +587,12 @@ public partial class UIXDemoViewModel : ObservableObject
     }
 
     private sealed record DemoScreenInfo(string Title, string Subtitle, string PathHint, string Area, string Role);
-}
 
-public sealed class ProductNavigationTreeItem : ObservableObject
-{
-    private bool isExpanded;
-    private bool isSelected;
-
-    public ProductNavigationTreeItem(
-        string treeItemId,
-        string title,
-        string subtitle,
-        string badgeText,
-        string kind,
-        string? nodeId,
-        string? linkId,
-        bool isGroup,
-        bool isExpanded,
-        IEnumerable<ProductNavigationTreeItem> children,
-        bool isReference = false,
-        bool isPopup = false,
-        bool isExternal = false)
+    private sealed class GraphvizDemoLayoutEngine : IGraphLayoutEngine
     {
-        TreeItemId = RequireText(treeItemId, nameof(treeItemId));
-        Title = RequireText(title, nameof(title));
-        Subtitle = subtitle;
-        BadgeText = badgeText;
-        Kind = kind;
-        IconGlyph = ResolveIconGlyph(title, kind, isGroup, isReference, isPopup, isExternal);
-        NodeId = nodeId;
-        LinkId = linkId;
-        IsGroup = isGroup;
-        this.isExpanded = isExpanded;
-        Children = children.ToArray();
-        IsReference = isReference;
-        IsPopup = isPopup;
-        IsExternal = isExternal;
-    }
-
-    public string TreeItemId { get; }
-
-    public string Title { get; }
-
-    public string Subtitle { get; }
-
-    public string BadgeText { get; }
-
-    public string Kind { get; }
-
-    public string IconGlyph { get; }
-
-    public string? NodeId { get; }
-
-    public string? LinkId { get; }
-
-    public bool IsGroup { get; }
-
-    public bool IsReference { get; }
-
-    public bool IsPopup { get; }
-
-    public bool IsExternal { get; }
-
-    public IReadOnlyList<ProductNavigationTreeItem> Children { get; }
-
-    public bool HasChildren => Children.Count > 0;
-
-    public bool IsExpanded
-    {
-        get => isExpanded;
-        set => SetProperty(ref isExpanded, value);
-    }
-
-    public bool IsSelected
-    {
-        get => isSelected;
-        set => SetProperty(ref isSelected, value);
-    }
-
-    private static string ResolveIconGlyph(
-        string title,
-        string kind,
-        bool isGroup,
-        bool isReference,
-        bool isPopup,
-        bool isExternal)
-    {
-        if (isPopup)
+        public GraphLayoutResult Layout(GraphDocument document, GraphLayoutOptions options)
         {
-            return "◱";
+            return GraphvizLayoutEngine.Layout(document, options);
         }
-
-        if (isExternal)
-        {
-            return "↗";
-        }
-
-        if (isReference)
-        {
-            return "↩";
-        }
-
-        if (isGroup)
-        {
-            return title switch
-            {
-                "Entry" => "⌁",
-                "Home" => "⌂",
-                "Shop" => "▦",
-                "Checkout" => "✓",
-                "Account" => "◉",
-                "Support" => "?",
-                "External" => "↗",
-                _ => "▣"
-            };
-        }
-
-        return title switch
-        {
-            "Splash" => "◆",
-            "Login" => "▣",
-            "Register" => "+",
-            "Verify email" => "✓",
-            "For you" => "✦",
-            "Campaign landing" => "%",
-            "Product images" => "▧",
-            "Variant selector" => "◫",
-            "Availability" => "⌁",
-            "Coupon" => "%",
-            "Payment provider" => "↗",
-            "Shipment tracking" => "↗",
-            "Return request" => "↩",
-            "Return label" => "▤",
-            "Invoices" => "▤",
-            "Saved addresses" => "⌂",
-            "Payment methods" => "◇",
-            "Help center" => "?",
-            "FAQ" => "?",
-            "Support chat" => "◌",
-            "Ticket details" => "●",
-            "Support popup" => "◱",
-            "Forgot password" => "⌕",
-            "Home" => "⌂",
-            "Search" => "⌕",
-            "Categories" => "▦",
-            "Product list" => "☰",
-            "Product details" => "●",
-            "Recommendations" => "✦",
-            "Reviews" => "★",
-            "Wishlist" => "♡",
-            "Cart" => "▤",
-            "Address" => "⌂",
-            "Delivery" => "→",
-            "Payment" => "◇",
-            "Order review" => "✓",
-            "Order confirmation" => "✓",
-            "Profile" => "◉",
-            "Orders" => "☰",
-            "Order details" => "●",
-            "Returns" => "↩",
-            "Settings" => "⚙",
-            "Help" => "?",
-            "Contact form" => "✉",
-            _ => kind.Length > 0 ? kind[0].ToString().ToUpperInvariant() : "●"
-        };
-    }
-
-    private static string RequireText(string value, string parameterName)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new ArgumentException("Value must not be null, empty or whitespace.", parameterName);
-        }
-
-        return value;
     }
 }
