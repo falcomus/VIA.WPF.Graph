@@ -18,7 +18,9 @@
 
   <Grid.ColumnDefinitions>
     <ColumnDefinition x:Name="navigationColumn"
-                      Width="{StaticResource GraphWorkspace.NavigationTreeColumnWidth}" />
+                      Width="{StaticResource GraphWorkspace.NavigationTreeColumnWidth}"
+                      MinWidth="{StaticResource GraphWorkspace.NavigationTreeMinWidth}"
+                      MaxWidth="{StaticResource GraphWorkspace.NavigationTreeMaxWidth}" />
     <ColumnDefinition x:Name="splitterColumn"
                       Width="{StaticResource GraphWorkspace.SplitterColumnWidth}" />
     <ColumnDefinition x:Name="graphColumn"

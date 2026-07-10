@@ -25,6 +25,32 @@ public sealed class GraphNavigationPathTreeTests
         });
     }
 
+
+    [Fact]
+    public void Projection_MeasuresLongLabelsWiderThanShortLabels()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphNavigationPathTree shortTree = new()
+            {
+                Projection = CreateSingleNodeProjection("Short")
+            };
+
+            GraphNavigationPathTree longTree = new()
+            {
+                Projection = CreateSingleNodeProjection(
+                    "Very long business process screen with several descriptive words that must remain fully readable without ellipsis or cutoff")
+            };
+
+            shortTree.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            longTree.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+
+            Assert.True(
+                longTree.DesiredSize.Width > shortTree.DesiredSize.Width + 100d,
+                $"Expected long label width ({longTree.DesiredSize.Width}) to exceed short label width ({shortTree.DesiredSize.Width}).");
+        });
+    }
+
     [Fact]
     public void SelectTreeNode_SelectsReferenceNodeAndSendsNodeRequest()
     {
@@ -130,6 +156,41 @@ public sealed class GraphNavigationPathTreeTests
             Assert.Equal(GraphRequestKind.OpenLink, request.Kind);
             Assert.Equal("start_missing", request.LinkId);
         });
+    }
+
+
+    private static GraphTreeProjection CreateSingleNodeProjection(string title)
+    {
+        GraphTreeNode root = new(
+            "root:single",
+            "single",
+            title,
+            GraphTreeNodeKind.Root);
+
+        return new GraphTreeProjection([root]);
+    }
+
+    private static GraphTreeProjection CreateLongLabelProjection()
+    {
+        const string longNodeId = "very_long_business_process_screen_with_many_words_and_an_even_longer_navigation_context";
+        const string longLinkId = "entry_to_very_long_business_process_screen_with_many_words_and_an_even_longer_navigation_context";
+        const string longTitle = "Very long business process screen with several descriptive words that must remain fully readable without ellipsis";
+
+        GraphTreeNode child = new(
+            $"root:entry/link:{longLinkId}",
+            longNodeId,
+            longTitle,
+            GraphTreeNodeKind.Branch,
+            longLinkId);
+
+        GraphTreeNode root = new(
+            "root:entry",
+            "entry",
+            "Entry",
+            GraphTreeNodeKind.Root,
+            children: [child]);
+
+        return new GraphTreeProjection([root]);
     }
 
     private static GraphTreeProjection CreateProjection()

@@ -72,8 +72,9 @@ public sealed class GraphNavigationPathTree : FrameworkElement
     private const double OuterPadding = 10d;
     private const double LevelIndent = 22d;
     private const double RowPitch = 58d;
-    private const double CardWidth = 220d;
+    private const double MinimumCardWidth = 220d;
     private const double CardHeight = 44d;
+    private const double CardHorizontalTextPadding = 16d;
     private const double CornerRadius = 5d;
     private const double TextSize = 11d;
 
@@ -197,7 +198,7 @@ public sealed class GraphNavigationPathTree : FrameworkElement
     {
         if (rows.Count == 0)
         {
-            return new Size(CardWidth + (OuterPadding * 2d), CardHeight + (OuterPadding * 2d));
+            return new Size(MinimumCardWidth + (OuterPadding * 2d), CardHeight + (OuterPadding * 2d));
         }
 
         double width = rows.Max(row => row.Bounds.Right) + OuterPadding;
@@ -252,7 +253,7 @@ public sealed class GraphNavigationPathTree : FrameworkElement
     private static void OnProjectionChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs eventArgs)
     {
         GraphNavigationPathTree tree = (GraphNavigationPathTree)dependencyObject;
-        tree.rows = BuildRows((GraphTreeProjection?)eventArgs.NewValue);
+        tree.rows = tree.BuildRows((GraphTreeProjection?)eventArgs.NewValue);
         tree.ApplyGraphSelection();
         tree.InvalidateMeasure();
         tree.InvalidateVisual();
@@ -264,7 +265,7 @@ public sealed class GraphNavigationPathTree : FrameworkElement
         tree.ApplyGraphSelection();
     }
 
-    private static IReadOnlyList<GraphNavigationTreeRow> BuildRows(GraphTreeProjection? projection)
+    private IReadOnlyList<GraphNavigationTreeRow> BuildRows(GraphTreeProjection? projection)
     {
         if (projection is null || projection.Roots.Count == 0)
         {
@@ -280,7 +281,7 @@ public sealed class GraphNavigationPathTree : FrameworkElement
         return result;
     }
 
-    private static void AppendRows(
+    private void AppendRows(
         List<GraphNavigationTreeRow> rows,
         GraphTreeNode node,
         int depth,
@@ -288,13 +289,36 @@ public sealed class GraphNavigationPathTree : FrameworkElement
     {
         double x = OuterPadding + (depth * LevelIndent);
         double y = OuterPadding + (rows.Count * RowPitch);
-        Rect bounds = new(x, y, CardWidth, CardHeight);
+        double width = MeasureCardWidth(node);
+        Rect bounds = new(x, y, width, CardHeight);
         rows.Add(new GraphNavigationTreeRow(node, depth, parentTreeNodeId, bounds));
 
         foreach (GraphTreeNode child in node.Children)
         {
             AppendRows(rows, child, depth + 1, node.TreeNodeId);
         }
+    }
+
+    private double MeasureCardWidth(GraphTreeNode node)
+    {
+        double titleWidth = MeasureTextWidth(node.Title, FontWeights.SemiBold);
+        double subtitleWidth = MeasureTextWidth(GetSubtitle(node), FontWeights.Normal);
+        double contentWidth = Math.Max(titleWidth, subtitleWidth) + CardHorizontalTextPadding;
+        return Math.Ceiling(Math.Max(MinimumCardWidth, contentWidth));
+    }
+
+    private double MeasureTextWidth(string text, FontWeight fontWeight)
+    {
+        FormattedText formattedText = new(
+            text,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            TextTypeface,
+            TextSize,
+            TextBrush,
+            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        formattedText.SetFontWeight(fontWeight);
+        return formattedText.WidthIncludingTrailingWhitespace;
     }
 
     private void DrawConnectors(DrawingContext drawingContext)
@@ -350,12 +374,7 @@ public sealed class GraphNavigationPathTree : FrameworkElement
             TextTypeface,
             TextSize,
             brush,
-            VisualTreeHelper.GetDpi(this).PixelsPerDip)
-        {
-            MaxTextWidth = Math.Max(0d, bounds.Width - 16d),
-            MaxTextHeight = 18d,
-            Trimming = TextTrimming.CharacterEllipsis
-        };
+            VisualTreeHelper.GetDpi(this).PixelsPerDip);
         formattedText.SetFontWeight(fontWeight);
 
         drawingContext.DrawText(formattedText, new Point(bounds.Left + 8d, bounds.Top + verticalOffset));

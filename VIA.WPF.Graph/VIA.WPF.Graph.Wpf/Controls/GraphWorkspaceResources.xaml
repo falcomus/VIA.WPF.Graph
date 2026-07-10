@@ -30,9 +30,10 @@
   <SolidColorBrush x:Key="GraphWorkspace.ScrollCornerBrush"
                    Color="{StaticResource GraphWorkspace.ScrollCornerColor}" />
 
-  <GridLength x:Key="GraphWorkspace.NavigationTreeColumnWidth">260</GridLength>
+  <GridLength x:Key="GraphWorkspace.NavigationTreeColumnWidth">340</GridLength>
   <GridLength x:Key="GraphWorkspace.SplitterColumnWidth">5</GridLength>
-  <sys:Double x:Key="GraphWorkspace.NavigationTreeWidth">260</sys:Double>
+  <sys:Double x:Key="GraphWorkspace.NavigationTreeMinWidth">260</sys:Double>
+  <sys:Double x:Key="GraphWorkspace.NavigationTreeMaxWidth">560</sys:Double>
   <sys:Double x:Key="GraphWorkspace.SplitterWidth">5</sys:Double>
   <sys:Double x:Key="GraphWorkspace.ScrollBarThickness">13</sys:Double>
 
@@ -161,7 +162,7 @@
   <Style x:Key="GraphWorkspace.NavigationScrollViewerStyle"
          TargetType="{x:Type ScrollViewer}">
     <Setter Property="HorizontalScrollBarVisibility"
-            Value="Disabled" />
+            Value="Auto" />
     <Setter Property="VerticalScrollBarVisibility"
             Value="Auto" />
     <Setter Property="CanContentScroll"
