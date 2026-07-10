@@ -168,6 +168,31 @@ public sealed class GraphNavigationPathTree : FrameworkElement
         return true;
     }
 
+
+    public bool BringSelectedTreeNodeIntoView()
+    {
+        string? selectedTreeNodeId = SelectedTreeNodeId;
+        if (string.IsNullOrWhiteSpace(selectedTreeNodeId))
+        {
+            return false;
+        }
+
+        GraphNavigationTreeRow? row = rows.FirstOrDefault(candidate =>
+            StringComparer.Ordinal.Equals(candidate.Node.TreeNodeId, selectedTreeNodeId));
+        if (row is null)
+        {
+            return false;
+        }
+
+        Rect targetBounds = new(
+            row.Bounds.Left,
+            Math.Max(0d, row.Bounds.Top - RowPitch),
+            row.Bounds.Width,
+            row.Bounds.Height + (RowPitch * 2d));
+        BringIntoView(targetBounds);
+        return true;
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
         if (rows.Count == 0)
@@ -516,3 +541,4 @@ public sealed class GraphNavigationPathTree : FrameworkElement
 
     private sealed record GraphNavigationTreeRow(GraphTreeNode Node, int Depth, string? ParentTreeNodeId, Rect Bounds);
 }
+

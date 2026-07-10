@@ -1,9 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Threading;
 using VIA.WPF.Graph.Core.Layout;
 using VIA.WPF.Graph.Core.Model;
@@ -17,7 +15,7 @@ namespace VIA.WPF.Graph.Wpf.Controls;
 /// The host supplies neutral graph data, view state, capabilities and a layout engine boundary;
 /// the workspace owns no host model and emits only neutral graph requests.
 /// </summary>
-public sealed class GraphWorkspace : Grid
+public sealed partial class GraphWorkspace : Grid
 {
     public static readonly DependencyProperty DocumentProperty = DependencyProperty.Register(
         nameof(Document),
@@ -119,24 +117,12 @@ public sealed class GraphWorkspace : Grid
 
     private const int GroupCompactMaxVisibleNodes = 20;
     private const int BranchMaxVisibleNodes = 22;
-    private const double NavigationTreeWidth = 260d;
-    private const double SplitterWidth = 5d;
     private const double DefaultFitPadding = 72d;
 
-    private readonly ColumnDefinition navigationColumn = new() { Width = new GridLength(NavigationTreeWidth) };
-    private readonly ColumnDefinition splitterColumn = new() { Width = new GridLength(SplitterWidth) };
-    private readonly ColumnDefinition graphColumn = new() { Width = new GridLength(1d, GridUnitType.Star) };
-    private readonly ScrollViewer navigationScrollViewer;
-    private readonly GridSplitter splitter;
-    private readonly Grid graphSurfaceHost;
-    private readonly ScrollBar horizontalScrollBar;
-    private readonly ScrollBar verticalScrollBar;
-    private readonly Border scrollCorner;
-    private Button navigationToggleButton = null!;
-    private Button densityButton = null!;
-    private ComboBox layoutDirectionComboBox = null!;
-    private ComboBox edgeRoutingStyleComboBox = null!;
-    private readonly GraphWorkspaceRequestCommand workspaceRequestCommand;
+    private GridLength shownNavigationColumnWidth;
+    private GridLength shownSplitterColumnWidth;
+    private readonly GraphWorkspaceRequestCommand navigationTreeRequestCommand;
+    private readonly GraphWorkspaceRequestCommand graphSurfaceRequestCommand;
 
     private bool isUpdatingFromChild;
     private bool isApplyingViewStateToChildren;
@@ -146,113 +132,19 @@ public sealed class GraphWorkspace : Grid
 
     public GraphWorkspace()
     {
-        ClipToBounds = true;
-        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        RowDefinitions.Add(new RowDefinition { Height = new GridLength(1d, GridUnitType.Star) });
-        ColumnDefinitions.Add(navigationColumn);
-        ColumnDefinitions.Add(splitterColumn);
-        ColumnDefinitions.Add(graphColumn);
+        InitializeComponent();
 
-        workspaceRequestCommand = new GraphWorkspaceRequestCommand(this);
+        shownNavigationColumnWidth = navigationColumn.Width;
+        shownSplitterColumnWidth = splitterColumn.Width;
 
-        Border toolbar = CreateToolbar();
-        SetRow(toolbar, 0);
-        SetColumn(toolbar, 0);
-        SetColumnSpan(toolbar, 3);
-        Children.Add(toolbar);
+        navigationTreeRequestCommand = new GraphWorkspaceRequestCommand(this, GraphWorkspaceRequestSource.NavigationTree);
+        graphSurfaceRequestCommand = new GraphWorkspaceRequestCommand(this, GraphWorkspaceRequestSource.GraphSurface);
 
-        NavigationTree = new GraphNavigationPathTree
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Top,
-            GraphRequestCommand = workspaceRequestCommand
-        };
+        NavigationTree.GraphRequestCommand = navigationTreeRequestCommand;
+        GraphSurface.GraphRequestCommand = graphSurfaceRequestCommand;
 
-        navigationScrollViewer = new ScrollViewer
-        {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            CanContentScroll = false,
-            Content = NavigationTree
-        };
-        SetRow(navigationScrollViewer, 1);
-        SetColumn(navigationScrollViewer, 0);
-        Children.Add(navigationScrollViewer);
-
-        splitter = new GridSplitter
-        {
-            Width = SplitterWidth,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Background = new SolidColorBrush(Color.FromRgb(216, 226, 236)),
-            ShowsPreview = true
-        };
-        SetRow(splitter, 1);
-        SetColumn(splitter, 1);
-        Children.Add(splitter);
-
-        GraphSurface = new SkiaGraphSurface
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            GraphRequestCommand = workspaceRequestCommand
-        };
-
-        graphSurfaceHost = new Grid
-        {
-            ClipToBounds = true,
-            Background = new SolidColorBrush(Color.FromRgb(244, 246, 248))
-        };
-        graphSurfaceHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1d, GridUnitType.Star) });
-        graphSurfaceHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        graphSurfaceHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1d, GridUnitType.Star) });
-        graphSurfaceHost.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        SetRow(GraphSurface, 0);
-        SetColumn(GraphSurface, 0);
-        graphSurfaceHost.Children.Add(GraphSurface);
-
-        horizontalScrollBar = new ScrollBar
-        {
-            Height = 13d,
-            Orientation = Orientation.Horizontal,
-            Visibility = Visibility.Collapsed,
-            Opacity = 0.82d,
-            Margin = new Thickness(2d, 0d, 2d, 2d)
-        };
-        horizontalScrollBar.ValueChanged += OnHorizontalScrollBarValueChanged;
-        SetRow(horizontalScrollBar, 1);
-        SetColumn(horizontalScrollBar, 0);
-        graphSurfaceHost.Children.Add(horizontalScrollBar);
-
-        verticalScrollBar = new ScrollBar
-        {
-            Width = 13d,
-            Orientation = Orientation.Vertical,
-            Visibility = Visibility.Collapsed,
-            Opacity = 0.82d,
-            Margin = new Thickness(0d, 2d, 2d, 2d)
-        };
-        verticalScrollBar.ValueChanged += OnVerticalScrollBarValueChanged;
-        SetRow(verticalScrollBar, 0);
-        SetColumn(verticalScrollBar, 1);
-        graphSurfaceHost.Children.Add(verticalScrollBar);
-
-        scrollCorner = new Border
-        {
-            Width = 13d,
-            Height = 13d,
-            Margin = new Thickness(0d, 0d, 2d, 2d),
-            Background = new SolidColorBrush(Color.FromRgb(231, 236, 241)),
-            Visibility = Visibility.Collapsed
-        };
-        SetRow(scrollCorner, 1);
-        SetColumn(scrollCorner, 1);
-        graphSurfaceHost.Children.Add(scrollCorner);
-
-        SetRow(graphSurfaceHost, 1);
-        SetColumn(graphSurfaceHost, 2);
-        Children.Add(graphSurfaceHost);
+        layoutDirectionComboBox.ItemsSource = Enum.GetValues(typeof(GraphLayoutDirection));
+        edgeRoutingStyleComboBox.ItemsSource = Enum.GetValues(typeof(GraphEdgeRoutingStyle));
 
         SizeChanged += OnWorkspaceSizeChanged;
         GraphSurface.SizeChanged += OnGraphSurfaceSizeChanged;
@@ -268,97 +160,49 @@ public sealed class GraphWorkspace : Grid
         RebuildWorkspace();
     }
 
-    private Border CreateToolbar()
+    private void OnFocusButtonClick(object sender, RoutedEventArgs e)
     {
-        StackPanel panel = new()
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-
-        panel.Children.Add(CreateToolbarButton("Focus", () => SetActiveViewMode(GraphViewMode.Focus)));
-        panel.Children.Add(CreateToolbarButton("Branch", () => SetActiveViewMode(GraphViewMode.Tree)));
-        panel.Children.Add(CreateToolbarButton("Group", () => SetActiveViewMode(GraphViewMode.Group)));
-        panel.Children.Add(CreateToolbarButton("Overview", () => SetActiveViewMode(GraphViewMode.Overview)));
-        panel.Children.Add(CreateToolbarSeparator());
-        panel.Children.Add(CreateToolbarButton("Fit", FitToGraph));
-        panel.Children.Add(CreateToolbarButton("100 %", SetActualSize));
-        panel.Children.Add(CreateToolbarButton("Center", () => _ = CenterSelection()));
-        panel.Children.Add(CreateToolbarSeparator());
-
-        navigationToggleButton = CreateToolbarButton("Tree", () => ShowNavigationTree = !ShowNavigationTree);
-        panel.Children.Add(navigationToggleButton);
-
-        densityButton = CreateToolbarButton("Compact", ToggleVisualDensity);
-        panel.Children.Add(densityButton);
-        panel.Children.Add(CreateToolbarSeparator());
-        panel.Children.Add(CreateToolbarLabel("Layout"));
-
-        layoutDirectionComboBox = new ComboBox
-        {
-            Width = 118d,
-            MinHeight = 26d,
-            Margin = new Thickness(4d, 0d, 8d, 0d),
-            ItemsSource = Enum.GetValues(typeof(GraphLayoutDirection))
-        };
-        layoutDirectionComboBox.SelectionChanged += OnLayoutDirectionComboBoxSelectionChanged;
-        panel.Children.Add(layoutDirectionComboBox);
-
-        panel.Children.Add(CreateToolbarLabel("Routing"));
-        edgeRoutingStyleComboBox = new ComboBox
-        {
-            Width = 110d,
-            MinHeight = 26d,
-            Margin = new Thickness(4d, 0d, 0d, 0d),
-            ItemsSource = Enum.GetValues(typeof(GraphEdgeRoutingStyle))
-        };
-        edgeRoutingStyleComboBox.SelectionChanged += OnEdgeRoutingStyleComboBoxSelectionChanged;
-        panel.Children.Add(edgeRoutingStyleComboBox);
-
-        return new Border
-        {
-            Padding = new Thickness(10d, 8d, 10d, 8d),
-            Background = new SolidColorBrush(Color.FromRgb(248, 250, 252)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(218, 228, 238)),
-            BorderThickness = new Thickness(0d, 0d, 0d, 1d),
-            Child = panel
-        };
+        SetActiveViewMode(GraphViewMode.Focus);
     }
 
-    private static Button CreateToolbarButton(string content, Action action)
+    private void OnBranchButtonClick(object sender, RoutedEventArgs e)
     {
-        Button button = new()
-        {
-            Content = content,
-            MinHeight = 28d,
-            Padding = new Thickness(10d, 4d, 10d, 4d),
-            Margin = new Thickness(0d, 0d, 6d, 0d),
-            FontWeight = FontWeights.SemiBold,
-            Cursor = Cursors.Hand
-        };
-        button.Click += (_, _) => action();
-        return button;
+        SetActiveViewMode(GraphViewMode.Tree);
     }
 
-    private static TextBlock CreateToolbarLabel(string text)
+    private void OnGroupButtonClick(object sender, RoutedEventArgs e)
     {
-        return new TextBlock
-        {
-            Text = text,
-            VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(Color.FromRgb(76, 92, 108))
-        };
+        SetActiveViewMode(GraphViewMode.Group);
     }
 
-    private static Border CreateToolbarSeparator()
+    private void OnOverviewButtonClick(object sender, RoutedEventArgs e)
     {
-        return new Border
-        {
-            Width = 1d,
-            Height = 22d,
-            Margin = new Thickness(4d, 0d, 10d, 0d),
-            Background = new SolidColorBrush(Color.FromRgb(216, 226, 236))
-        };
+        SetActiveViewMode(GraphViewMode.Overview);
+    }
+
+    private void OnFitButtonClick(object sender, RoutedEventArgs e)
+    {
+        FitToGraph();
+    }
+
+    private void OnActualSizeButtonClick(object sender, RoutedEventArgs e)
+    {
+        SetActualSize();
+    }
+
+    private void OnCenterButtonClick(object sender, RoutedEventArgs e)
+    {
+        _ = CenterSelection();
+    }
+
+    private void OnNavigationToggleButtonClick(object sender, RoutedEventArgs e)
+    {
+        ShowNavigationTree = !ShowNavigationTree;
+    }
+
+    private void OnDensityButtonClick(object sender, RoutedEventArgs e)
+    {
+        ToggleVisualDensity();
     }
 
     public GraphDocument? Document
@@ -421,9 +265,9 @@ public sealed class GraphWorkspace : Grid
 
     public GraphLayoutResult? VisibleLayout => (GraphLayoutResult?)GetValue(VisibleLayoutProperty);
 
-    public GraphNavigationPathTree NavigationTree { get; }
+    public GraphNavigationPathTree NavigationTree => navigationTreeControl;
 
-    public SkiaGraphSurface GraphSurface { get; }
+    public SkiaGraphSurface GraphSurface => graphSurfaceControl;
 
     public void FitToGraph()
     {
@@ -672,6 +516,7 @@ public sealed class GraphWorkspace : Grid
             GraphSurface.Zoom = viewState.Viewport.Zoom;
             GraphSurface.PanX = viewState.Viewport.PanX;
             GraphSurface.PanY = viewState.Viewport.PanY;
+            ScrollSelectedTreeNodeIntoViewAfterLayoutPass();
         }
         finally
         {
@@ -679,11 +524,32 @@ public sealed class GraphWorkspace : Grid
         }
     }
 
-    private void HandleChildGraphRequest(GraphRequest request)
+    private void ScrollSelectedTreeNodeIntoViewAfterLayoutPass()
+    {
+        if (!ShowNavigationTree)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            () =>
+            {
+                if (!ShowNavigationTree)
+                {
+                    return;
+                }
+
+                NavigationTree.UpdateLayout();
+                _ = NavigationTree.BringSelectedTreeNodeIntoView();
+            },
+            DispatcherPriority.Loaded);
+    }
+
+    private void HandleChildGraphRequest(GraphRequest request, GraphWorkspaceRequestSource requestSource)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        GraphViewState nextViewState = CreateViewStateAfterRequest(EffectiveViewState, request);
+        GraphViewState nextViewState = CreateViewStateAfterRequest(EffectiveViewState, request, requestSource);
         isUpdatingFromChild = true;
         try
         {
@@ -709,12 +575,19 @@ public sealed class GraphWorkspace : Grid
         command.Execute(request);
     }
 
-    private static GraphViewState CreateViewStateAfterRequest(GraphViewState current, GraphRequest request)
+    private static GraphViewState CreateViewStateAfterRequest(
+        GraphViewState current,
+        GraphRequest request,
+        GraphWorkspaceRequestSource requestSource)
     {
+        GraphViewMode nodeSelectionMode = requestSource == GraphWorkspaceRequestSource.NavigationTree
+            ? GraphViewMode.Tree
+            : GraphViewMode.Focus;
+
         return request.Kind switch
         {
             GraphRequestKind.SelectNode or GraphRequestKind.OpenNode => new GraphViewState(
-                GraphViewMode.Focus,
+                nodeSelectionMode,
                 request.NodeId,
                 null,
                 new GraphSelectionState(selectedNodeIds: request.NodeId is null ? null : [request.NodeId]),
@@ -838,8 +711,8 @@ public sealed class GraphWorkspace : Grid
     private void UpdateNavigationTreeVisibility()
     {
         bool showTree = ShowNavigationTree;
-        navigationColumn.Width = showTree ? new GridLength(NavigationTreeWidth) : new GridLength(0d);
-        splitterColumn.Width = showTree ? new GridLength(SplitterWidth) : new GridLength(0d);
+        navigationColumn.Width = showTree ? shownNavigationColumnWidth : new GridLength(0d);
+        splitterColumn.Width = showTree ? shownSplitterColumnWidth : new GridLength(0d);
         NavigationTree.Visibility = showTree ? Visibility.Visible : Visibility.Collapsed;
         navigationScrollViewer.Visibility = showTree ? Visibility.Visible : Visibility.Collapsed;
         splitter.Visibility = showTree ? Visibility.Visible : Visibility.Collapsed;
@@ -937,38 +810,133 @@ public sealed class GraphWorkspace : Grid
             return document.Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
         }
 
+        Dictionary<string, GraphNode> nodesById = document.Nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
+        GraphNode[] groupNodes = document.Nodes
+            .Where(node => node.GroupMemberships.Contains(groupId, StringComparer.Ordinal))
+            .ToArray();
+        if (groupNodes.Length == 0)
+        {
+            return document.Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+        }
+
+        HashSet<string> groupNodeIds = groupNodes
+            .Select(node => node.Id)
+            .ToHashSet(StringComparer.Ordinal);
         HashSet<string> visibleNodeIds = new(StringComparer.Ordinal);
-        foreach (GraphNode node in document.Nodes.Where(node => node.GroupMemberships.Contains(groupId, StringComparer.Ordinal)))
-        {
-            visibleNodeIds.Add(node.Id);
-            if (visibleNodeIds.Count >= GroupCompactMaxVisibleNodes)
-            {
-                return visibleNodeIds;
-            }
-        }
 
-        foreach (GraphLink link in document.Links)
-        {
-            if (visibleNodeIds.Count >= GroupCompactMaxVisibleNodes)
-            {
-                break;
-            }
-
-            bool sourceVisible = visibleNodeIds.Contains(link.SourceNodeId);
-            bool targetVisible = visibleNodeIds.Contains(link.TargetNodeId);
-            if (sourceVisible && !targetVisible)
-            {
-                visibleNodeIds.Add(link.TargetNodeId);
-            }
-            else if (targetVisible && !sourceVisible)
-            {
-                visibleNodeIds.Add(link.SourceNodeId);
-            }
-        }
+        AddSelectedGroupNodes(visibleNodeIds, nodesById, groupNodeIds, viewState);
+        AddGroupEntryNodes(visibleNodeIds, groupNodes, document.Links, groupNodeIds);
+        AddDirectContextNodes(visibleNodeIds, nodesById, document.Links);
+        AddGroupNodesUpToLimit(visibleNodeIds, groupNodes);
+        AddDirectContextNodes(visibleNodeIds, nodesById, document.Links);
 
         return visibleNodeIds.Count == 0
             ? document.Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal)
             : visibleNodeIds;
+    }
+
+    private static void AddSelectedGroupNodes(
+        HashSet<string> visibleNodeIds,
+        IReadOnlyDictionary<string, GraphNode> nodesById,
+        IReadOnlySet<string> groupNodeIds,
+        GraphViewState viewState)
+    {
+        IEnumerable<string?> selectedNodeIds =
+        [
+            viewState.ActiveNodeId,
+            ..viewState.Selection.SelectedNodeIds
+        ];
+
+        foreach (string? nodeId in selectedNodeIds)
+        {
+            if (visibleNodeIds.Count >= GroupCompactMaxVisibleNodes)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(nodeId)
+                && groupNodeIds.Contains(nodeId)
+                && nodesById.ContainsKey(nodeId))
+            {
+                visibleNodeIds.Add(nodeId);
+            }
+        }
+    }
+
+    private static void AddGroupEntryNodes(
+        HashSet<string> visibleNodeIds,
+        IReadOnlyList<GraphNode> groupNodes,
+        IReadOnlyList<GraphLink> links,
+        IReadOnlySet<string> groupNodeIds)
+    {
+        foreach (GraphNode node in groupNodes)
+        {
+            if (visibleNodeIds.Count >= GroupCompactMaxVisibleNodes)
+            {
+                return;
+            }
+
+            bool hasIncomingFromSameGroup = links.Any(link =>
+                StringComparer.Ordinal.Equals(link.TargetNodeId, node.Id)
+                && groupNodeIds.Contains(link.SourceNodeId)
+                && IsQuietNavigationLink(link));
+
+            if (!hasIncomingFromSameGroup)
+            {
+                visibleNodeIds.Add(node.Id);
+            }
+        }
+    }
+
+    private static void AddGroupNodesUpToLimit(HashSet<string> visibleNodeIds, IReadOnlyList<GraphNode> groupNodes)
+    {
+        foreach (GraphNode node in groupNodes)
+        {
+            if (visibleNodeIds.Count >= GroupCompactMaxVisibleNodes)
+            {
+                return;
+            }
+
+            visibleNodeIds.Add(node.Id);
+        }
+    }
+
+    private static void AddDirectContextNodes(
+        HashSet<string> visibleNodeIds,
+        IReadOnlyDictionary<string, GraphNode> nodesById,
+        IReadOnlyList<GraphLink> links)
+    {
+        if (visibleNodeIds.Count == 0)
+        {
+            return;
+        }
+
+        string[] currentNodeIds = visibleNodeIds.ToArray();
+        foreach (string nodeId in currentNodeIds)
+        {
+            foreach (GraphLink link in links.Where(link => IsDirectLink(link, nodeId) && IsQuietNavigationLink(link)))
+            {
+                if (visibleNodeIds.Count >= GroupCompactMaxVisibleNodes)
+                {
+                    return;
+                }
+
+                if (nodesById.ContainsKey(link.SourceNodeId))
+                {
+                    visibleNodeIds.Add(link.SourceNodeId);
+                }
+
+                if (visibleNodeIds.Count >= GroupCompactMaxVisibleNodes)
+                {
+                    return;
+                }
+
+                if (nodesById.ContainsKey(link.TargetNodeId))
+                {
+                    visibleNodeIds.Add(link.TargetNodeId);
+                }
+            }
+        }
     }
 
     private static bool IsDirectLink(GraphLink link, string nodeId)
@@ -1175,13 +1143,21 @@ public sealed class GraphWorkspace : Grid
             : new Size(viewportWidth, viewportHeight);
     }
 
+    private enum GraphWorkspaceRequestSource
+    {
+        NavigationTree,
+        GraphSurface,
+    }
+
     private sealed class GraphWorkspaceRequestCommand : ICommand
     {
         private readonly GraphWorkspace owner;
+        private readonly GraphWorkspaceRequestSource requestSource;
 
-        public GraphWorkspaceRequestCommand(GraphWorkspace owner)
+        public GraphWorkspaceRequestCommand(GraphWorkspace owner, GraphWorkspaceRequestSource requestSource)
         {
             this.owner = owner;
+            this.requestSource = requestSource;
         }
 
         public event EventHandler? CanExecuteChanged
@@ -1199,7 +1175,7 @@ public sealed class GraphWorkspace : Grid
         {
             if (parameter is GraphRequest request)
             {
-                owner.HandleChildGraphRequest(request);
+                owner.HandleChildGraphRequest(request, requestSource);
             }
         }
     }

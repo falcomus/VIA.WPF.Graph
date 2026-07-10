@@ -1,0 +1,200 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+  <Color x:Key="GraphWorkspace.SurfaceBackgroundColor">#FFF4F6F8</Color>
+  <Color x:Key="GraphWorkspace.ToolbarBackgroundColor">#FFF8FAFC</Color>
+  <Color x:Key="GraphWorkspace.BorderColor">#FFD8E4EC</Color>
+  <Color x:Key="GraphWorkspace.SeparatorColor">#FFD8E2EC</Color>
+  <Color x:Key="GraphWorkspace.TextColor">#FF2D3D4F</Color>
+  <Color x:Key="GraphWorkspace.MutedTextColor">#FF4C5C6C</Color>
+  <Color x:Key="GraphWorkspace.ButtonHoverColor">#FFF0F5FA</Color>
+  <Color x:Key="GraphWorkspace.ButtonPressedColor">#FFE4EDF6</Color>
+  <Color x:Key="GraphWorkspace.ScrollCornerColor">#FFE7ECF1</Color>
+
+  <SolidColorBrush x:Key="GraphWorkspace.SurfaceBackgroundBrush"
+                   Color="{StaticResource GraphWorkspace.SurfaceBackgroundColor}" />
+  <SolidColorBrush x:Key="GraphWorkspace.ToolbarBackgroundBrush"
+                   Color="{StaticResource GraphWorkspace.ToolbarBackgroundColor}" />
+  <SolidColorBrush x:Key="GraphWorkspace.BorderBrush"
+                   Color="{StaticResource GraphWorkspace.BorderColor}" />
+  <SolidColorBrush x:Key="GraphWorkspace.SeparatorBrush"
+                   Color="{StaticResource GraphWorkspace.SeparatorColor}" />
+  <SolidColorBrush x:Key="GraphWorkspace.TextBrush"
+                   Color="{StaticResource GraphWorkspace.TextColor}" />
+  <SolidColorBrush x:Key="GraphWorkspace.MutedTextBrush"
+                   Color="{StaticResource GraphWorkspace.MutedTextColor}" />
+  <SolidColorBrush x:Key="GraphWorkspace.ButtonHoverBrush"
+                   Color="{StaticResource GraphWorkspace.ButtonHoverColor}" />
+  <SolidColorBrush x:Key="GraphWorkspace.ButtonPressedBrush"
+                   Color="{StaticResource GraphWorkspace.ButtonPressedColor}" />
+  <SolidColorBrush x:Key="GraphWorkspace.ScrollCornerBrush"
+                   Color="{StaticResource GraphWorkspace.ScrollCornerColor}" />
+
+  <GridLength x:Key="GraphWorkspace.NavigationTreeColumnWidth">260</GridLength>
+  <GridLength x:Key="GraphWorkspace.SplitterColumnWidth">5</GridLength>
+  <sys:Double x:Key="GraphWorkspace.NavigationTreeWidth">260</sys:Double>
+  <sys:Double x:Key="GraphWorkspace.SplitterWidth">5</sys:Double>
+  <sys:Double x:Key="GraphWorkspace.ScrollBarThickness">13</sys:Double>
+
+  <Thickness x:Key="GraphWorkspace.ToolbarPadding">10,8</Thickness>
+  <Thickness x:Key="GraphWorkspace.ToolbarButtonPadding">10,4</Thickness>
+  <Thickness x:Key="GraphWorkspace.ToolbarButtonMargin">0,0,6,0</Thickness>
+  <Thickness x:Key="GraphWorkspace.ToolbarComboBoxMargin">4,0,8,0</Thickness>
+  <Thickness x:Key="GraphWorkspace.LastToolbarComboBoxMargin">4,0,0,0</Thickness>
+  <Thickness x:Key="GraphWorkspace.ScrollBarHorizontalMargin">2,0,2,2</Thickness>
+  <Thickness x:Key="GraphWorkspace.ScrollBarVerticalMargin">0,2,2,2</Thickness>
+  <Thickness x:Key="GraphWorkspace.ScrollCornerMargin">0,0,2,2</Thickness>
+
+  <Style x:Key="GraphWorkspace.ToolbarBorderStyle"
+         TargetType="{x:Type Border}">
+    <Setter Property="Padding"
+            Value="{StaticResource GraphWorkspace.ToolbarPadding}" />
+    <Setter Property="Background"
+            Value="{StaticResource GraphWorkspace.ToolbarBackgroundBrush}" />
+    <Setter Property="BorderBrush"
+            Value="{StaticResource GraphWorkspace.BorderBrush}" />
+    <Setter Property="BorderThickness"
+            Value="0,0,0,1" />
+    <Setter Property="SnapsToDevicePixels"
+            Value="True" />
+  </Style>
+
+  <Style x:Key="GraphWorkspace.ToolbarButtonStyle"
+         TargetType="{x:Type Button}">
+    <Setter Property="MinHeight"
+            Value="28" />
+    <Setter Property="Padding"
+            Value="{StaticResource GraphWorkspace.ToolbarButtonPadding}" />
+    <Setter Property="Margin"
+            Value="{StaticResource GraphWorkspace.ToolbarButtonMargin}" />
+    <Setter Property="FontWeight"
+            Value="SemiBold" />
+    <Setter Property="Cursor"
+            Value="Hand" />
+    <Setter Property="Foreground"
+            Value="{StaticResource GraphWorkspace.TextBrush}" />
+    <Setter Property="Background"
+            Value="White" />
+    <Setter Property="BorderBrush"
+            Value="{StaticResource GraphWorkspace.BorderBrush}" />
+    <Setter Property="BorderThickness"
+            Value="1" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type Button}">
+          <Border x:Name="ButtonChrome"
+                  MinHeight="{TemplateBinding MinHeight}"
+                  Padding="{TemplateBinding Padding}"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="6"
+                  SnapsToDevicePixels="True">
+            <ContentPresenter HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver"
+                     Value="True">
+              <Setter TargetName="ButtonChrome"
+                      Property="Background"
+                      Value="{StaticResource GraphWorkspace.ButtonHoverBrush}" />
+            </Trigger>
+            <Trigger Property="IsPressed"
+                     Value="True">
+              <Setter TargetName="ButtonChrome"
+                      Property="Background"
+                      Value="{StaticResource GraphWorkspace.ButtonPressedBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled"
+                     Value="False">
+              <Setter Property="Opacity"
+                      Value="0.56" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="GraphWorkspace.ToolbarLabelStyle"
+         TargetType="{x:Type TextBlock}">
+    <Setter Property="VerticalAlignment"
+            Value="Center" />
+    <Setter Property="Foreground"
+            Value="{StaticResource GraphWorkspace.MutedTextBrush}" />
+  </Style>
+
+  <Style x:Key="GraphWorkspace.ToolbarSeparatorStyle"
+         TargetType="{x:Type Border}">
+    <Setter Property="Width"
+            Value="1" />
+    <Setter Property="Height"
+            Value="22" />
+    <Setter Property="Margin"
+            Value="4,0,10,0" />
+    <Setter Property="Background"
+            Value="{StaticResource GraphWorkspace.SeparatorBrush}" />
+  </Style>
+
+  <Style x:Key="GraphWorkspace.ToolbarComboBoxStyle"
+         TargetType="{x:Type ComboBox}">
+    <Setter Property="Width"
+            Value="118" />
+    <Setter Property="MinHeight"
+            Value="26" />
+    <Setter Property="Margin"
+            Value="{StaticResource GraphWorkspace.ToolbarComboBoxMargin}" />
+    <Setter Property="VerticalAlignment"
+            Value="Center" />
+  </Style>
+
+  <Style x:Key="GraphWorkspace.LastToolbarComboBoxStyle"
+         BasedOn="{StaticResource GraphWorkspace.ToolbarComboBoxStyle}"
+         TargetType="{x:Type ComboBox}">
+    <Setter Property="Width"
+            Value="110" />
+    <Setter Property="Margin"
+            Value="{StaticResource GraphWorkspace.LastToolbarComboBoxMargin}" />
+  </Style>
+
+  <Style x:Key="GraphWorkspace.NavigationScrollViewerStyle"
+         TargetType="{x:Type ScrollViewer}">
+    <Setter Property="HorizontalScrollBarVisibility"
+            Value="Disabled" />
+    <Setter Property="VerticalScrollBarVisibility"
+            Value="Auto" />
+    <Setter Property="CanContentScroll"
+            Value="False" />
+  </Style>
+
+  <Style x:Key="GraphWorkspace.SplitterStyle"
+         TargetType="{x:Type GridSplitter}">
+    <Setter Property="Width"
+            Value="{StaticResource GraphWorkspace.SplitterWidth}" />
+    <Setter Property="HorizontalAlignment"
+            Value="Stretch" />
+    <Setter Property="VerticalAlignment"
+            Value="Stretch" />
+    <Setter Property="Background"
+            Value="{StaticResource GraphWorkspace.SeparatorBrush}" />
+    <Setter Property="ShowsPreview"
+            Value="True" />
+  </Style>
+
+  <Style x:Key="GraphWorkspace.GraphSurfaceHostStyle"
+         TargetType="{x:Type Grid}">
+    <Setter Property="ClipToBounds"
+            Value="True" />
+    <Setter Property="Background"
+            Value="{StaticResource GraphWorkspace.SurfaceBackgroundBrush}" />
+  </Style>
+
+  <Style x:Key="GraphWorkspace.GraphScrollBarStyle"
+         TargetType="{x:Type ScrollBar}">
+    <Setter Property="Opacity"
+            Value="0.82" />
+    <Setter Property="Visibility"
+            Value="Collapsed" />
+  </Style>
+</ResourceDictionary>

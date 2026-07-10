@@ -1,0 +1,146 @@
+<Grid x:Class="VIA.WPF.Graph.Wpf.Controls.GraphWorkspace"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:graphControls="clr-namespace:VIA.WPF.Graph.Wpf.Controls"
+      ClipToBounds="True">
+  <Grid.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/VIA.WPF.Graph.Wpf;component/Controls/GraphWorkspaceResources.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Grid.Resources>
+
+  <Grid.RowDefinitions>
+    <RowDefinition Height="Auto" />
+    <RowDefinition Height="*" />
+  </Grid.RowDefinitions>
+
+  <Grid.ColumnDefinitions>
+    <ColumnDefinition x:Name="navigationColumn"
+                      Width="{StaticResource GraphWorkspace.NavigationTreeColumnWidth}" />
+    <ColumnDefinition x:Name="splitterColumn"
+                      Width="{StaticResource GraphWorkspace.SplitterColumnWidth}" />
+    <ColumnDefinition x:Name="graphColumn"
+                      Width="*" />
+  </Grid.ColumnDefinitions>
+
+  <Border Grid.Row="0"
+          Grid.Column="0"
+          Grid.ColumnSpan="3"
+          Style="{StaticResource GraphWorkspace.ToolbarBorderStyle}">
+    <StackPanel Orientation="Horizontal"
+                VerticalAlignment="Center">
+      <Button Content="Focus"
+              Click="OnFocusButtonClick"
+              Style="{StaticResource GraphWorkspace.ToolbarButtonStyle}" />
+      <Button Content="Branch"
+              Click="OnBranchButtonClick"
+              Style="{StaticResource GraphWorkspace.ToolbarButtonStyle}" />
+      <Button Content="Group"
+              Click="OnGroupButtonClick"
+              Style="{StaticResource GraphWorkspace.ToolbarButtonStyle}" />
+      <Button Content="Overview"
+              Click="OnOverviewButtonClick"
+              Style="{StaticResource GraphWorkspace.ToolbarButtonStyle}" />
+
+      <Border Style="{StaticResource GraphWorkspace.ToolbarSeparatorStyle}" />
+
+      <Button Content="Fit"
+              Click="OnFitButtonClick"
+              Style="{StaticResource GraphWorkspace.ToolbarButtonStyle}" />
+      <Button Content="100 %"
+              Click="OnActualSizeButtonClick"
+              Style="{StaticResource GraphWorkspace.ToolbarButtonStyle}" />
+      <Button Content="Center"
+              Click="OnCenterButtonClick"
+              Style="{StaticResource GraphWorkspace.ToolbarButtonStyle}" />
+
+      <Border Style="{StaticResource GraphWorkspace.ToolbarSeparatorStyle}" />
+
+      <Button x:Name="navigationToggleButton"
+              Content="Tree"
+              Click="OnNavigationToggleButtonClick"
+              Style="{StaticResource GraphWorkspace.ToolbarButtonStyle}" />
+      <Button x:Name="densityButton"
+              Content="Compact"
+              Click="OnDensityButtonClick"
+              Style="{StaticResource GraphWorkspace.ToolbarButtonStyle}" />
+
+      <Border Style="{StaticResource GraphWorkspace.ToolbarSeparatorStyle}" />
+
+      <TextBlock Text="Layout"
+                 Style="{StaticResource GraphWorkspace.ToolbarLabelStyle}" />
+      <ComboBox x:Name="layoutDirectionComboBox"
+                SelectionChanged="OnLayoutDirectionComboBoxSelectionChanged"
+                Style="{StaticResource GraphWorkspace.ToolbarComboBoxStyle}" />
+
+      <TextBlock Text="Routing"
+                 Style="{StaticResource GraphWorkspace.ToolbarLabelStyle}" />
+      <ComboBox x:Name="edgeRoutingStyleComboBox"
+                SelectionChanged="OnEdgeRoutingStyleComboBoxSelectionChanged"
+                Style="{StaticResource GraphWorkspace.LastToolbarComboBoxStyle}" />
+    </StackPanel>
+  </Border>
+
+  <ScrollViewer x:Name="navigationScrollViewer"
+                Grid.Row="1"
+                Grid.Column="0"
+                Style="{StaticResource GraphWorkspace.NavigationScrollViewerStyle}">
+    <graphControls:GraphNavigationPathTree x:Name="navigationTreeControl"
+                                           HorizontalAlignment="Stretch"
+                                           VerticalAlignment="Top" />
+  </ScrollViewer>
+
+  <GridSplitter x:Name="splitter"
+                Grid.Row="1"
+                Grid.Column="1"
+                Style="{StaticResource GraphWorkspace.SplitterStyle}" />
+
+  <Grid x:Name="graphSurfaceHost"
+        Grid.Row="1"
+        Grid.Column="2"
+        Style="{StaticResource GraphWorkspace.GraphSurfaceHostStyle}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="*" />
+      <ColumnDefinition Width="Auto" />
+    </Grid.ColumnDefinitions>
+
+    <graphControls:SkiaGraphSurface x:Name="graphSurfaceControl"
+                                    Grid.Row="0"
+                                    Grid.Column="0"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch" />
+
+    <ScrollBar x:Name="horizontalScrollBar"
+               Grid.Row="1"
+               Grid.Column="0"
+               Height="{StaticResource GraphWorkspace.ScrollBarThickness}"
+               Margin="{StaticResource GraphWorkspace.ScrollBarHorizontalMargin}"
+               Orientation="Horizontal"
+               Style="{StaticResource GraphWorkspace.GraphScrollBarStyle}"
+               ValueChanged="OnHorizontalScrollBarValueChanged" />
+
+    <ScrollBar x:Name="verticalScrollBar"
+               Grid.Row="0"
+               Grid.Column="1"
+               Width="{StaticResource GraphWorkspace.ScrollBarThickness}"
+               Margin="{StaticResource GraphWorkspace.ScrollBarVerticalMargin}"
+               Orientation="Vertical"
+               Style="{StaticResource GraphWorkspace.GraphScrollBarStyle}"
+               ValueChanged="OnVerticalScrollBarValueChanged" />
+
+    <Border x:Name="scrollCorner"
+            Grid.Row="1"
+            Grid.Column="1"
+            Width="{StaticResource GraphWorkspace.ScrollBarThickness}"
+            Height="{StaticResource GraphWorkspace.ScrollBarThickness}"
+            Margin="{StaticResource GraphWorkspace.ScrollCornerMargin}"
+            Background="{StaticResource GraphWorkspace.ScrollCornerBrush}"
+            Visibility="Collapsed" />
+  </Grid>
+</Grid>

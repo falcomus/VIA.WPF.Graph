@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Input;
 using VIA.WPF.Graph.Core.Layout;
 using VIA.WPF.Graph.Core.Model;
 using VIA.WPF.Graph.Core.Requests;
@@ -82,15 +83,86 @@ public sealed class GraphWorkspaceTests
             bool selected = workspace.NavigationTree.SelectTreeNode("root:start/link:start_main");
 
             Assert.True(selected);
-            Assert.Equal(GraphViewMode.Focus, workspace.ViewState?.ActiveViewMode);
+            Assert.Equal(GraphViewMode.Tree, workspace.ViewState?.ActiveViewMode);
             Assert.Equal("main", workspace.ViewState?.ActiveNodeId);
             Assert.Equal(new[] { "main" }, workspace.ViewState?.Selection.SelectedNodeIds);
             Assert.Equal(new[] { "main" }, workspace.GraphSurface.SelectedNodeIds);
+            Assert.Equal("main", workspace.NavigationTree.SelectedNodeId);
             GraphRequest request = Assert.Single(command.Requests);
             Assert.Equal(GraphRequestKind.SelectNode, request.Kind);
             Assert.Equal("main", request.NodeId);
         });
     }
+    [Fact]
+    public void GraphSelection_UpdatesFocusModeAndTreeSelection()
+    {
+        StaTestRunner.Run(() =>
+        {
+            RecordingGraphRequestCommand command = new();
+            GraphWorkspace workspace = new()
+            {
+                LayoutEngine = new RecordingGraphLayoutEngine(),
+                GraphRequestCommand = command,
+                Document = TestGraphLayouts.CreateBasicDocument(),
+                ViewState = GraphViewState.Default
+            };
+
+            GraphRequest request = GraphRequest.SelectNode("main");
+            ICommand graphCommand = Assert.IsAssignableFrom<ICommand>(workspace.GraphSurface.GraphRequestCommand);
+            Assert.True(graphCommand.CanExecute(request));
+            graphCommand.Execute(request);
+
+            Assert.Equal(GraphViewMode.Focus, workspace.ViewState?.ActiveViewMode);
+            Assert.Equal("main", workspace.ViewState?.ActiveNodeId);
+            Assert.Equal(new[] { "main" }, workspace.ViewState?.Selection.SelectedNodeIds);
+            Assert.Equal("main", workspace.NavigationTree.SelectedNodeId);
+            GraphRequest forwardedRequest = Assert.Single(command.Requests);
+            Assert.Equal(GraphRequestKind.SelectNode, forwardedRequest.Kind);
+            Assert.Equal("main", forwardedRequest.NodeId);
+        });
+    }
+
+    [Fact]
+    public void GroupCompact_KeepsSelectedNodeAndLimitsVisibleDocument()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphWorkspace workspace = new()
+            {
+                LayoutEngine = new RecordingGraphLayoutEngine(),
+                ViewState = new GraphViewState(
+                    GraphViewMode.Group,
+                    activeNodeId: "node_25",
+                    activeGroupId: "group-a",
+                    selection: new GraphSelectionState(
+                        selectedNodeIds: ["node_25"],
+                        selectedGroupIds: ["group-a"])),
+                Document = CreateGroupCompactStressDocument()
+            };
+
+            Assert.NotNull(workspace.VisibleDocument);
+            Assert.True(workspace.VisibleDocument.Nodes.Count <= 20);
+            Assert.Contains(workspace.VisibleDocument.Nodes, node => node.Id == "node_25");
+            Assert.Contains(workspace.VisibleDocument.Nodes, node => node.Id == "node_01");
+        });
+    }
+
+    [Fact]
+    public void NavigationTree_BringSelectedTreeNodeIntoView_ReturnsTrueForSelectedNode()
+    {
+        StaTestRunner.Run(() =>
+        {
+            GraphWorkspace workspace = new()
+            {
+                LayoutEngine = new RecordingGraphLayoutEngine(),
+                Document = TestGraphLayouts.CreateBasicDocument(),
+                ViewState = new GraphViewState(GraphViewMode.Focus, activeNodeId: "main", selection: new GraphSelectionState(selectedNodeIds: ["main"]))
+            };
+
+            Assert.True(workspace.NavigationTree.BringSelectedTreeNodeIntoView());
+        });
+    }
+
 
 
 
@@ -107,6 +179,19 @@ public sealed class GraphWorkspaceTests
                 yield return descendant;
             }
         }
+    }
+
+    private static GraphDocument CreateGroupCompactStressDocument()
+    {
+        GraphGroup[] groups = [new("group-a", "Group A", GraphGroupKind.Container)];
+        GraphNode[] nodes = Enumerable.Range(1, 25)
+            .Select(index => new GraphNode($"node_{index:00}", $"Node {index:00}", groupMemberships: ["group-a"]))
+            .ToArray();
+        GraphLink[] links = Enumerable.Range(1, 24)
+            .Select(index => new GraphLink($"node_{index:00}_node_{index + 1:00}", $"node_{index:00}", $"node_{index + 1:00}", kind: GraphLinkKind.Primary))
+            .ToArray();
+
+        return new GraphDocument("group-compact-stress", nodes, links, groups: groups);
     }
 
     private sealed class RecordingGraphLayoutEngine : IGraphLayoutEngine
