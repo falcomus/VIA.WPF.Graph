@@ -1,9 +1,9 @@
 # VIA.WPF.Graph – Masterplan für allgemeine Graph-Visualisierung und spätere UserFlow-Integration
 
-**Status:** geprüfter Architektur- und Entwicklungsplan, fortgeschrieben bis Skia-R7-Measure-/Wrap-Stand  
+**Status:** geprüfter Architektur- und Entwicklungsplan, fortgeschrieben bis Skia-R7-Workspace-Entscheidungsstand  
 **Ziel:** Allgemein nutzbare Graph-Visualisierung für WPF in der Solution `VIA.WPF.Graph`, zunächst als unabhängiges Test-/Prototyp-Projekt, danach schrittweise Integration in VIA UserFlow.  
 **Layout-Engine:** `Rubjerg.Graphviz` **3.0.5** / Graphviz `dot`.  
-**Renderbasis:** WPF-Host mit `SkiaGraphSurface` auf `SkiaSharp.Views.WPF` für die aktive Product-Demo-Graphfläche; die frühere WPF-`GraphCanvas` bleibt vorerst als Legacy-/Vergleichsbestand erhalten.  
+**Renderbasis:** WPF-Host mit `SkiaGraphSurface` auf `SkiaSharp.Views.WPF` für die aktive Product-Demo-Graphfläche. Die frühere WPF-`GraphCanvas` ist nur noch Legacy-Bestand und wird im nächsten freigegebenen Code-Patch entfernt, sofern keine kompilierten Referenzen verbleiben.  
 **MVVM-Standard:** überall CommunityToolkit.Mvvm (`ObservableObject`, `[ObservableProperty]`, `[RelayCommand]`, `[AsyncRelayCommand]`, bei Bedarf `ObservableRecipient` und `WeakReferenceMessenger`).  
 **Arbeitsregel:** Jede Phase endet mit lokaler Build-/Funktionsprüfung und explizitem Step-Gate.
 
@@ -14,6 +14,8 @@
 **Revision 8 – Größen-/Wrap-Vertrag und Layout-Tool-Grenze:** Der Größenvertrag wird um eine spätere `GraphCardMeasurePolicy` ergänzt. Titel, Subtitle, Typzeile und optionale Host-Metadaten müssen vor dem Layout mit definierten Wrap-/Ellipsis-Regeln in eine finale `GraphSize` überführt werden. `GraphLayoutNode.Bounds` werden nicht heimlich nach dem Graphviz-Layout vergrößert, weil sonst Kanten, Gruppen, Hit-Tests und Scroll-Extents nicht mehr zum Layout passen. Graphviz/`dot` bleibt die Standard-Layoutengine. Alternative Layoutadapter wie MSAGL dürfen später nur nach Step-Gate evaluiert werden; reine Graphalgorithmus-Bibliotheken wie QuikGraph ersetzen kein visuelles Layout.
 
 **Revision 9 – GraphWorkspace als Host-Onboarding-Schicht:** Die Library soll später nicht nur einzelne Primitive wie Tree und Skia-Fläche bereitstellen, sondern eine wiederverwendbare Workspace-/Navigator-Schicht für Standard-Hosts. Hosts wie UserFlow sollen nicht die komplette Product-Demo-Logik für Tree/Graph-Koordination, Scope-Bildung, ScrollIntoView, Fit/Center, Selection-Sync, ViewMode-Wechsel und Request-Dispatch nachbauen müssen. `GraphWorkspace` bleibt trotzdem hostneutral: Der Host liefert `GraphDocument`, hostbesessenen `GraphViewState`, Capabilities, Request-Handler und optionale Policies; die Library orchestriert die neutrale Arbeitsansicht, mutiert aber kein Hostmodell.
+
+**Revision 10 – GraphWorkspace-Zielentscheidungen:** `GraphWorkspace` wird als fertiges hostneutrales WPF-Control mit integriertem Navigation Tree und `SkiaGraphSurface` geplant. Der Host soll nicht `VisibleDocument`, `VisibleLayout`, Tree/Graph-Sync, ScrollIntoView, Focus, Fit/Center oder Scope-Bildung selbst nachbauen müssen. Standard für Gruppenklicks ist `Group Compact`; vollständige Gruppen und Gesamtgraphen sind explizite Nutzeraktionen. Die Library erzeugt sichtbare Teildokumente und Layouts aus dem vollständigen `GraphDocument`. Der Inspector bleibt hostseitig. Layout-/Routing-Umschaltung wird vorgesehen, aber erst nach ScopePolicy-Stabilisierung umgesetzt.
 
 ---
 
@@ -163,10 +165,10 @@ VIA.WPF.Graph.Graphviz
   DOT-Erzeugung, Layoutauswertung, Kanten-/Cluster-Geometrie
 
 VIA.WPF.Graph.Wpf
-  SkiaGraphSurface als primärer Renderer, Zoom/Pan, Hit-Testing,
-  Knoten-/Kanten-/Gruppenrendering, Tree-/Pfadansicht,
-  Auswahl, Suche, Fokus, Interaktions-Requests;
-  GraphCanvas bleibt vorerst Legacy-/Vergleichsbestand
+  SkiaGraphSurface als primärer Renderer, GraphWorkspace als Standard-Onboarding-Control,
+  Zoom/Pan, Hit-Testing, Knoten-/Kanten-/Gruppenrendering,
+  Tree-/Pfadansicht, Auswahl, Suche, Fokus, Interaktions-Requests;
+  GraphCanvas wird nach R7-006 im folgenden Code-Patch entfernt
 
 VIA.WPF.Graph.Demo
   Eigenständige WPF-Testanwendung mit Testdaten,
@@ -588,6 +590,81 @@ oder:
 ```
 
 Die genaue öffentliche API wird erst nach einem Step-Gate festgelegt. Bis dahin bleibt Product-Demo-Code ein Erprobungsort, aber kein Host-spezifisches Muster, das später kopiert werden soll.
+
+#### 7.1.2.1 Verbindliche Zielentscheidungen für GraphWorkspace
+
+Für die weitere Phase-7-Umsetzung gelten folgende Entscheidungen:
+
+| Entscheidung | Festlegung | Konsequenz |
+|---|---|---|
+| Workspace-Form | `GraphWorkspace` wird als fertiges WPF-Control geplant. | Standardhosts müssen nicht selbst Tree, Graphfläche, Scope, ScrollIntoView und Viewport-Orchestrierung verdrahten. |
+| Tree-Zugehörigkeit | Der Navigation Tree ist Teil des Standard-Workspace und optional abschaltbar. | Tree/Graph-Sync, Tree-Pfadöffnung und Tree-ScrollIntoView sind Library-Mechanik. |
+| Gruppen-Klick | Standard ist `Group Compact`. | Ein Gruppenklick zeigt nicht automatisch alle enthaltenen Screens/Nodes. |
+| Vollständige Gruppe | `Group Full` ist eine explizite Nutzeraktion. | Große Bereiche überfluten den Graph nicht versehentlich. |
+| Sichtbarer Graph | Die Library erzeugt `VisibleDocument` und `VisibleLayout` aus dem vollständigen `GraphDocument`. | Hosts wie UserFlow müssen die Demo-Scoping-Logik nicht nachbauen. |
+| Layout/Routing-Umschaltung | Wird vorgesehen, aber erst nach stabiler ScopePolicy umgesetzt. | Erst wird reduziert, welche Nodes sichtbar sind; danach werden Linien/Routing optimiert. |
+| Legacy GraphCanvas | Wird im nächsten freigegebenen Code-Patch entfernt. | SkiaGraphSurface und GraphWorkspace werden die einzige aktive WPF-Renderbasis. |
+| Inspector | Bleibt hostseitig. | Die Library liefert Auswahl, Requests und neutrale Feedbackdaten, aber keine domänenspezifische Detailansicht. |
+
+#### 7.1.2.2 Standard-Scope-Regeln
+
+Die erste verbindliche ScopePolicy für den Workspace lautet:
+
+| Auslöser | Standardmodus | Sichtbarer Inhalt | Grenze |
+|---|---|---|---|
+| Klick auf Node/Card | `Focus` | aktiver Node plus direkte Vorgänger und Nachfolger | typischerweise 8 bis 15 Karten |
+| Klick auf Tree-Zweig | `Branch` | aktiver Tree-Pfad plus direkte Alternativen | Tiefe 1 bis 2 |
+| Klick auf Containergruppe | `Group Compact` | Einstiegsknoten, aktive Auswahl, wichtige Übergänge und Randknoten | maximal 20 sichtbare Nodes |
+| Button „Full Group“ | `Group Full` | alle Nodes der Gruppe plus relevante Randübergänge | explizite Nutzeraktion |
+| Button „Overview“ | `Overview` | kompletter Graph | Diagnose-/Map-Ansicht, nicht Standard |
+| Diagnose/Test | `Diagnostic` | vollständiger Graph mit Fehler-/Sonderfällen | explizit |
+
+Wenn ein Scope mehr als die erlaubte Node-Anzahl enthält, reduziert die Library nicht stillschweigend fachliche Daten. Sie wählt eine reproduzierbare kompakte Darstellung: aktive Auswahl zuerst, dann Einstiegspunkte, direkte Nachbarn, strukturell wichtige Übergänge und zuletzt neutrale Referenz-/Randknoten. Die vollständigen Daten bleiben im Host-`GraphDocument` erhalten.
+
+#### 7.1.2.3 Host- und Library-Verantwortung
+
+Die Library übernimmt:
+
+- Aufbau der Tree-Projektion aus dem neutralen Graph,
+- Aufbau des sichtbaren Graph-Scope,
+- Layout des sichtbaren Scope,
+- Synchronisierung von Tree-Auswahl, Graph-Auswahl und aktiven IDs,
+- ScrollIntoView im Tree,
+- Fit/Center/100 %/Free Pan-Zoom,
+- Auswahl- und Open-Requests an den Host,
+- neutrale Anzeige von Request-/Validation-Feedback.
+
+Der Host übernimmt weiterhin:
+
+- Erstellung des vollständigen `GraphDocument`,
+- Besitz und Persistenz von `GraphViewState`,
+- fachliche Mutation und Undo/Redo,
+- Verarbeitung neutraler Requests,
+- domänenspezifische Inspektoren, Dialoge und Editoren,
+- Mapping von Hostobjekten auf neutrale Graph-IDs.
+
+`GraphWorkspace` darf dadurch hilfreich sein, ohne die zentrale Grenze zu verletzen: Die Library orchestriert neutrale UI-Mechanik, aber sie besitzt und mutiert kein Hostmodell.
+
+#### 7.1.2.4 Geplante Standard-Bindings
+
+Die bevorzugte einfache Host-Anbindung bleibt:
+
+```xml
+<graph:GraphWorkspace
+    Document="{Binding FlowGraphDocument}"
+    ViewState="{Binding FlowGraphViewState, Mode=TwoWay}"
+    HostCapabilities="{Binding GraphCapabilities}"
+    RequestHandler="{Binding GraphRequestHandler}" />
+```
+
+Alternativ darf eine spätere gebündelte Workspace-VM angeboten werden:
+
+```xml
+<graph:GraphWorkspace
+    Workspace="{Binding FlowGraphWorkspace}" />
+```
+
+Die erste Umsetzungsvariante bevorzugt die einfache Property-Bindung, weil sie den Host-Vertrag klar sichtbar macht und keine Host-spezifische ViewModel-Basisklasse erzwingt.
 
 ### 7.2 Linker Bereich: Navigation Path Tree
 
@@ -1769,29 +1846,49 @@ Abnahme:
 - Gruppen-, Link-, Hit-Test- und Scroll-Extents bleiben konsistent.
 - MSAGL/QuikGraph bleiben nur dokumentierte spätere Prüfoptionen, keine neue Dependency.
 
-### P7-003b – GraphWorkspace als Host-Onboarding-Schicht planen
+### P7-003b – GraphWorkspace-Zielentscheidungen festlegen
 
 Ziel:
 
-- Eine wiederverwendbare Workspace-/Navigator-Schicht als Standardintegration für Hosts planen.
-- Product-Demo-Logik für Tree/Graph-Koordination, sichtbare Teilgraphen, ScrollIntoView, Fit/Center, Mode-Wechsel und Request-Dispatch als Kandidat für allgemeine Library-Mechanik identifizieren.
-- Klären, welche Verantwortung in `GraphWorkspace`, `SkiaGraphSurface`, `GraphNavigationPathTree`, Scope-/Layout-Policies und Host-ViewModels liegt.
-- Sicherstellen, dass Hosts wie UserFlow später nur `GraphDocument`, View-State, Capabilities und Request-Handler liefern müssen.
+- Eine wiederverwendbare Workspace-/Navigator-Schicht als Standardintegration für Hosts verbindlich planen.
+- Festlegen, dass `GraphWorkspace` als fertiges WPF-Control mit integriertem, optional abschaltbarem Navigation Tree und `SkiaGraphSurface` umgesetzt wird.
+- Festlegen, dass die Library sichtbare Scopes und Layouts aus dem vollständigen `GraphDocument` erzeugt.
+- Festlegen, dass `Group Compact` Standard bei Gruppenauswahl ist und `Group Full` nur explizit aktiviert wird.
+- Festlegen, dass der Inspector hostseitig bleibt.
+- Festlegen, dass Layout-/Routing-Umschaltung erst nach stabiler ScopePolicy umgesetzt wird.
+- Festlegen, dass Legacy-`GraphCanvas` im nächsten Code-Patch entfernt wird.
 - Keine UserFlow-Typen, keine Hostmodell-Mutation und keine Persistenzentscheidung in die Library ziehen.
 
 Abnahme:
 
 - Masterplan beschreibt die Workspace-Verantwortung eindeutig.
 - Hostpflichten und Librarypflichten sind getrennt.
+- Standard-Scope-Regeln sind konkret definiert.
+- `MaxVisibleNodes` für `Group Compact` ist auf 20 festgelegt.
 - Die Product Demo bleibt Erprobungsort, aber nicht das nachzubauende Integrationsmuster.
 - Kein Code-/API-Commit führt neue öffentliche `GraphWorkspace`-Typen ohne eigenes Step-Gate ein.
+
+### P7-003c – Legacy-GraphCanvas entfernen
+
+Ziel:
+
+- Alte WPF-`GraphCanvas`-Bestände entfernen, nachdem `SkiaGraphSurface` als aktive Renderbasis und GraphWorkspace-Zielrichtung festgelegt sind.
+- Entfernen der nicht mehr aktiven Legacy-Control-Dateien und zugehörigen Tests, sofern keine kompilierten Referenzen mehr bestehen.
+- Keine Änderung am Skia-Rendering, an Demo-Scopes oder an öffentlichem Hostvertrag in diesem Cleanup.
+
+Abnahme:
+
+- Solution baut nach Entfernung.
+- Tests sind grün oder bewusst angepasste Legacy-Tests wurden entfernt.
+- Product Demo nutzt weiterhin ausschließlich `SkiaGraphSurface`.
+- Keine `GraphCanvas`-Referenzen verbleiben außerhalb historischer Dokumentation.
 
 ### P7-004 – NavigationPathTree/Graph-Sync allgemein absichern
 
 Ziel:
 
 - Tree/Graph-Synchronisierung ohne Domänenannahmen prüfen.
-- GraphWorkspace-/Policy-Regeln für Tree-Auswahl, sichtbaren Graph-Scope und ScrollIntoView vorbereiten.
+- GraphWorkspace-/Policy-Regeln für Tree-Auswahl, sichtbaren Graph-Scope und ScrollIntoView auf Basis der festgelegten Standard-Scope-Regeln vorbereiten.
 - Selection, OpenNode, OpenGroup, ClearSelection und ReturnToOverview allgemein absichern.
 - Zyklensichere Projektion und Referenzknoten-Verhalten prüfen.
 
