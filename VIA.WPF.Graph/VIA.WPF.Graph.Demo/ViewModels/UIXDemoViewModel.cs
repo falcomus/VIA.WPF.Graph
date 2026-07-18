@@ -152,7 +152,10 @@ public partial class UIXDemoViewModel : ObservableObject
         {
             case GraphRequestKind.SelectNode:
             case GraphRequestKind.OpenNode:
-                SetWorkspaceSelection(request.NodeId, GraphViewMode.Focus);
+                GraphViewMode nextMode = WorkspaceViewState.ActiveViewMode == GraphViewMode.Tree
+                    ? GraphViewMode.Tree
+                    : GraphViewMode.Focus;
+                SetWorkspaceSelection(request.NodeId, nextMode);
                 break;
 
             case GraphRequestKind.SelectLink:

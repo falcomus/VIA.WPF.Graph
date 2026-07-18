@@ -19,8 +19,7 @@
   <Grid.ColumnDefinitions>
     <ColumnDefinition x:Name="navigationColumn"
                       Width="{StaticResource GraphWorkspace.NavigationTreeColumnWidth}"
-                      MinWidth="{StaticResource GraphWorkspace.NavigationTreeMinWidth}"
-                      MaxWidth="{StaticResource GraphWorkspace.NavigationTreeMaxWidth}" />
+                      MinWidth="{StaticResource GraphWorkspace.NavigationTreeMinWidth}" />
     <ColumnDefinition x:Name="splitterColumn"
                       Width="{StaticResource GraphWorkspace.SplitterColumnWidth}" />
     <ColumnDefinition x:Name="graphColumn"
@@ -85,14 +84,12 @@
     </StackPanel>
   </Border>
 
-  <ScrollViewer x:Name="navigationScrollViewer"
-                Grid.Row="1"
-                Grid.Column="0"
-                Style="{StaticResource GraphWorkspace.NavigationScrollViewerStyle}">
-    <graphControls:GraphNavigationPathTree x:Name="navigationTreeControl"
-                                           HorizontalAlignment="Stretch"
-                                           VerticalAlignment="Top" />
-  </ScrollViewer>
+  <graphControls:GraphNavigationPathTree x:Name="navigationTreeControl"
+                                         Grid.Row="1"
+                                         Grid.Column="0"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Stretch"
+                                         Style="{StaticResource GraphWorkspace.NavigationTreeStyle}" />
 
   <GridSplitter x:Name="splitter"
                 Grid.Row="1"
@@ -146,3 +143,4 @@
             Visibility="Collapsed" />
   </Grid>
 </Grid>
+

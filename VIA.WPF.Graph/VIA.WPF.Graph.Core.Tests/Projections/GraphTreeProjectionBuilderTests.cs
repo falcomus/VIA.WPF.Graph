@@ -115,4 +115,64 @@ public sealed class GraphTreeProjectionBuilderTests
         Assert.Contains(projection.Roots, root => root.NodeId == "isolated");
         Assert.DoesNotContain(projection.Roots, root => root.NodeId == "main");
     }
+
+    [Fact]
+    public void Build_PreservesDepthFirstFirstExpansionSemantics()
+    {
+        GraphDocument document = new(
+            "depth-first",
+            nodes: [new("a", "A"), new("b", "B"), new("c", "C")],
+            links:
+            [
+                new("a_b", "a", "b", kind: GraphLinkKind.Primary),
+                new("a_c", "a", "c", kind: GraphLinkKind.Primary),
+                new("b_c", "b", "c", kind: GraphLinkKind.Primary)
+            ]);
+
+        GraphTreeProjection projection = GraphTreeProjectionBuilder.Build(document, rootNodeId: "a");
+
+        GraphTreeNode root = Assert.Single(projection.Roots);
+        Assert.Equal(2, root.Children.Count);
+        GraphTreeNode b = root.Children[0];
+        Assert.Equal("b", b.NodeId);
+        GraphTreeNode expandedC = Assert.Single(b.Children);
+        GraphTreeNode referenceC = root.Children[1];
+
+        Assert.Equal(GraphTreeNodeKind.Branch, expandedC.Kind);
+        Assert.Equal("c", expandedC.NodeId);
+        Assert.Equal(GraphTreeNodeKind.Reference, referenceC.Kind);
+        Assert.Equal("c", referenceC.NodeId);
+    }
+
+    [Fact]
+    public void Build_HandlesVeryDeepStructuralChainWithoutCallStackRecursion()
+    {
+        const int nodeCount = 2048;
+        List<GraphNode> nodes = Enumerable.Range(0, nodeCount)
+            .Select(index => new GraphNode($"n{index}", $"Node {index}"))
+            .ToList();
+        List<GraphLink> links = Enumerable.Range(0, nodeCount - 1)
+            .Select(index => new GraphLink(
+                index.ToString(),
+                $"n{index}",
+                $"n{index + 1}",
+                kind: GraphLinkKind.Primary))
+            .ToList();
+        GraphDocument document = new("deep-chain", nodes, links);
+
+        GraphTreeProjection projection = GraphTreeProjectionBuilder.Build(document, rootNodeId: "n0");
+
+        GraphTreeNode current = Assert.Single(projection.Roots);
+        int visitedNodeCount = 1;
+        while (current.Children.Count > 0)
+        {
+            current = Assert.Single(current.Children);
+            visitedNodeCount++;
+        }
+
+        Assert.Equal(nodeCount, visitedNodeCount);
+        Assert.Equal($"n{nodeCount - 1}", current.NodeId);
+    }
+
 }
+

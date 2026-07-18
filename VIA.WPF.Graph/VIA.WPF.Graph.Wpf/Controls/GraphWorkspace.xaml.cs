@@ -433,13 +433,18 @@ public sealed partial class GraphWorkspace : Grid
             return;
         }
 
+        RebuildWorkspaceCore();
+    }
+
+    private void RebuildWorkspaceCore()
+    {
         GraphDocument? document = Document;
         if (document is null)
         {
             SetValue(TreeProjectionPropertyKey, null);
             SetValue(VisibleDocumentPropertyKey, null);
             SetValue(VisibleLayoutPropertyKey, null);
-            NavigationTree.Projection = null;
+            NavigationTree.SetNavigationData(document: null, projection: null);
             GraphSurface.Document = null;
             GraphSurface.LayoutResult = null;
             ApplyViewStateToChildren(GraphViewState.Default);
@@ -457,7 +462,7 @@ public sealed partial class GraphWorkspace : Grid
         SetValue(VisibleDocumentPropertyKey, visibleDocument);
         SetValue(VisibleLayoutPropertyKey, visibleLayout);
 
-        NavigationTree.Projection = projection;
+        NavigationTree.SetNavigationData(document, projection);
         GraphSurface.Document = visibleDocument;
         GraphSurface.LayoutResult = visibleLayout;
         GraphSurface.VisualDensity = VisualDensity;
@@ -505,8 +510,11 @@ public sealed partial class GraphWorkspace : Grid
         try
         {
             isApplyingViewStateToChildren = true;
-            NavigationTree.GraphSelectedNodeIds = viewState.Selection.SelectedNodeIds;
-            NavigationTree.GraphSelectedLinkIds = viewState.Selection.SelectedLinkIds;
+            NavigationTree.ApplyGraphSelection(
+                viewState.Selection.SelectedNodeIds,
+                viewState.Selection.SelectedLinkIds,
+                viewState.Selection.SelectedGroupIds);
+            NavigationTree.ApplyCollapsedGroupIds(viewState.CollapsedContainerGroupIds);
             GraphSurface.SelectedNodeIds = viewState.Selection.SelectedNodeIds;
             GraphSurface.SelectedLinkIds = viewState.Selection.SelectedLinkIds;
             GraphSurface.SelectedGroupIds = viewState.Selection.SelectedGroupIds;
@@ -539,7 +547,6 @@ public sealed partial class GraphWorkspace : Grid
                     return;
                 }
 
-                NavigationTree.UpdateLayout();
                 _ = NavigationTree.BringSelectedTreeNodeIntoView();
             },
             DispatcherPriority.Loaded);
@@ -549,18 +556,23 @@ public sealed partial class GraphWorkspace : Grid
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        GraphViewState nextViewState = CreateViewStateAfterRequest(EffectiveViewState, request, requestSource);
+        if (isUpdatingFromChild)
+        {
+            return;
+        }
+
         isUpdatingFromChild = true;
         try
         {
+            GraphViewState nextViewState = CreateViewStateAfterRequest(EffectiveViewState, request, requestSource);
             SetCurrentValue(ViewStateProperty, nextViewState);
+            RebuildWorkspaceCore();
         }
         finally
         {
             isUpdatingFromChild = false;
         }
 
-        RebuildWorkspace();
         ForwardGraphRequest(request);
     }
 
@@ -714,7 +726,6 @@ public sealed partial class GraphWorkspace : Grid
         navigationColumn.Width = showTree ? shownNavigationColumnWidth : new GridLength(0d);
         splitterColumn.Width = showTree ? shownSplitterColumnWidth : new GridLength(0d);
         NavigationTree.Visibility = showTree ? Visibility.Visible : Visibility.Collapsed;
-        navigationScrollViewer.Visibility = showTree ? Visibility.Visible : Visibility.Collapsed;
         splitter.Visibility = showTree ? Visibility.Visible : Visibility.Collapsed;
         navigationToggleButton.Content = showTree ? "Hide tree" : "Show tree";
     }
@@ -1180,3 +1191,4 @@ public sealed partial class GraphWorkspace : Grid
         }
     }
 }
+

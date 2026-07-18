@@ -48,7 +48,7 @@ public static class GraphTreeProjectionBuilder
                 continue;
             }
 
-            roots.Add(BuildNode(
+            roots.Add(BuildNodeIterative(
                 rootNode,
                 GraphTreeNodeKind.Root,
                 treeNodeId: $"root:{rootNode.Id}",
@@ -57,7 +57,6 @@ public static class GraphTreeProjectionBuilder
                 nodeById,
                 outgoingLinksBySourceId,
                 recursiveKinds,
-                ancestorNodeIds: [],
                 visitedNodeIds));
         }
 
@@ -70,7 +69,7 @@ public static class GraphTreeProjectionBuilder
                     continue;
                 }
 
-                roots.Add(BuildNode(
+                roots.Add(BuildNodeIterative(
                     node,
                     GraphTreeNodeKind.Root,
                     treeNodeId: $"root:{node.Id}",
@@ -79,7 +78,6 @@ public static class GraphTreeProjectionBuilder
                     nodeById,
                     outgoingLinksBySourceId,
                     recursiveKinds,
-                    ancestorNodeIds: [],
                     visitedNodeIds));
             }
         }
@@ -87,67 +85,56 @@ public static class GraphTreeProjectionBuilder
         return new GraphTreeProjection(roots);
     }
 
-    private static GraphTreeNode BuildNode(
-        GraphNode node,
-        GraphTreeNodeKind kind,
+    private static GraphTreeNode BuildNodeIterative(
+        GraphNode rootNode,
+        GraphTreeNodeKind rootKind,
         string treeNodeId,
         string? linkId,
         GraphLinkKind? linkKind,
         IReadOnlyDictionary<string, GraphNode> nodeById,
         IReadOnlyDictionary<string, GraphLink[]> outgoingLinksBySourceId,
         IReadOnlySet<GraphLinkKind> recursiveLinkKinds,
-        HashSet<string> ancestorNodeIds,
         HashSet<string> visitedNodeIds)
     {
-        HashSet<string> nextAncestorNodeIds = new(ancestorNodeIds, StringComparer.Ordinal)
+        Stack<BuildFrame> pendingFrames = new();
+        HashSet<string> activeAncestorNodeIds = new(StringComparer.Ordinal);
+
+        visitedNodeIds.Add(rootNode.Id);
+        activeAncestorNodeIds.Add(rootNode.Id);
+        pendingFrames.Push(CreateFrame(rootNode, rootKind, treeNodeId, linkId, linkKind, outgoingLinksBySourceId));
+
+        while (pendingFrames.Count > 0)
         {
-            node.Id
-        };
+            BuildFrame frame = pendingFrames.Peek();
+            if (frame.NextLinkIndex >= frame.OutgoingLinks.Count)
+            {
+                GraphTreeNode completedNode = new(
+                    frame.TreeNodeId,
+                    frame.Node.Id,
+                    frame.Node.Title,
+                    frame.Kind,
+                    frame.LinkId,
+                    frame.LinkKind,
+                    frame.Children);
 
-        visitedNodeIds.Add(node.Id);
+                pendingFrames.Pop();
+                activeAncestorNodeIds.Remove(frame.Node.Id);
 
-        IReadOnlyList<GraphTreeNode> children = BuildChildren(
-            node,
-            treeNodeId,
-            nodeById,
-            outgoingLinksBySourceId,
-            recursiveLinkKinds,
-            nextAncestorNodeIds,
-            visitedNodeIds);
+                if (pendingFrames.Count == 0)
+                {
+                    return completedNode;
+                }
 
-        return new GraphTreeNode(
-            treeNodeId,
-            node.Id,
-            node.Title,
-            kind,
-            linkId,
-            linkKind,
-            children);
-    }
+                pendingFrames.Peek().Children.Add(completedNode);
+                continue;
+            }
 
-    private static IReadOnlyList<GraphTreeNode> BuildChildren(
-        GraphNode node,
-        string parentTreeNodeId,
-        IReadOnlyDictionary<string, GraphNode> nodeById,
-        IReadOnlyDictionary<string, GraphLink[]> outgoingLinksBySourceId,
-        IReadOnlySet<GraphLinkKind> recursiveLinkKinds,
-        HashSet<string> ancestorNodeIds,
-        HashSet<string> visitedNodeIds)
-    {
-        if (!outgoingLinksBySourceId.TryGetValue(node.Id, out GraphLink[]? outgoingLinks))
-        {
-            return Array.Empty<GraphTreeNode>();
-        }
-
-        List<GraphTreeNode> children = [];
-
-        foreach (GraphLink link in outgoingLinks)
-        {
-            string childTreeNodeId = $"{parentTreeNodeId}/link:{link.Id}";
+            GraphLink link = frame.OutgoingLinks[frame.NextLinkIndex++];
+            string childTreeNodeId = $"{frame.TreeNodeId}/link:{link.Id}";
 
             if (!nodeById.TryGetValue(link.TargetNodeId, out GraphNode? targetNode))
             {
-                children.Add(new GraphTreeNode(
+                frame.Children.Add(new GraphTreeNode(
                     childTreeNodeId,
                     link.TargetNodeId,
                     link.TargetNodeId,
@@ -160,7 +147,7 @@ public static class GraphTreeProjectionBuilder
             if (link.Kind == GraphLinkKind.External || targetNode.Kind == GraphNodeKind.External)
             {
                 visitedNodeIds.Add(targetNode.Id);
-                children.Add(new GraphTreeNode(
+                frame.Children.Add(new GraphTreeNode(
                     childTreeNodeId,
                     targetNode.Id,
                     targetNode.Title,
@@ -171,11 +158,11 @@ public static class GraphTreeProjectionBuilder
             }
 
             if (!recursiveLinkKinds.Contains(link.Kind)
-                || ancestorNodeIds.Contains(targetNode.Id)
+                || activeAncestorNodeIds.Contains(targetNode.Id)
                 || visitedNodeIds.Contains(targetNode.Id))
             {
                 visitedNodeIds.Add(targetNode.Id);
-                children.Add(new GraphTreeNode(
+                frame.Children.Add(new GraphTreeNode(
                     childTreeNodeId,
                     targetNode.Id,
                     targetNode.Title,
@@ -185,20 +172,33 @@ public static class GraphTreeProjectionBuilder
                 continue;
             }
 
-            children.Add(BuildNode(
+            visitedNodeIds.Add(targetNode.Id);
+            activeAncestorNodeIds.Add(targetNode.Id);
+            pendingFrames.Push(CreateFrame(
                 targetNode,
                 GraphTreeNodeKind.Branch,
                 childTreeNodeId,
                 link.Id,
                 link.Kind,
-                nodeById,
-                outgoingLinksBySourceId,
-                recursiveLinkKinds,
-                ancestorNodeIds,
-                visitedNodeIds));
+                outgoingLinksBySourceId));
         }
 
-        return children;
+        throw new InvalidOperationException("The graph tree projection traversal ended without producing a root node.");
+    }
+
+    private static BuildFrame CreateFrame(
+        GraphNode node,
+        GraphTreeNodeKind kind,
+        string treeNodeId,
+        string? linkId,
+        GraphLinkKind? linkKind,
+        IReadOnlyDictionary<string, GraphLink[]> outgoingLinksBySourceId)
+    {
+        GraphLink[] outgoingLinks = outgoingLinksBySourceId.TryGetValue(node.Id, out GraphLink[]? resolvedLinks)
+            ? resolvedLinks
+            : Array.Empty<GraphLink>();
+
+        return new BuildFrame(node, kind, treeNodeId, linkId, linkKind, outgoingLinks);
     }
 
     private static IReadOnlyList<string> ResolveRootNodeIds(
@@ -239,5 +239,40 @@ public static class GraphTreeProjectionBuilder
 
         GraphNode? fallbackRoot = document.Nodes.FirstOrDefault();
         return fallbackRoot is null ? Array.Empty<string>() : [fallbackRoot.Id];
+    }
+
+    private sealed class BuildFrame
+    {
+        public BuildFrame(
+            GraphNode node,
+            GraphTreeNodeKind kind,
+            string treeNodeId,
+            string? linkId,
+            GraphLinkKind? linkKind,
+            IReadOnlyList<GraphLink> outgoingLinks)
+        {
+            Node = node;
+            Kind = kind;
+            TreeNodeId = treeNodeId;
+            LinkId = linkId;
+            LinkKind = linkKind;
+            OutgoingLinks = outgoingLinks;
+        }
+
+        public GraphNode Node { get; }
+
+        public GraphTreeNodeKind Kind { get; }
+
+        public string TreeNodeId { get; }
+
+        public string? LinkId { get; }
+
+        public GraphLinkKind? LinkKind { get; }
+
+        public IReadOnlyList<GraphLink> OutgoingLinks { get; }
+
+        public List<GraphTreeNode> Children { get; } = [];
+
+        public int NextLinkIndex { get; set; }
     }
 }
