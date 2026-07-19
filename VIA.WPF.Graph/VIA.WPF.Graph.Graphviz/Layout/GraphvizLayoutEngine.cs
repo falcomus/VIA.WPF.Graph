@@ -1,7 +1,7 @@
+using Rubjerg.Graphviz;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
-using Rubjerg.Graphviz;
 using VIA.WPF.Graph.Core.Layout;
 using VIA.WPF.Graph.Core.Model;
 

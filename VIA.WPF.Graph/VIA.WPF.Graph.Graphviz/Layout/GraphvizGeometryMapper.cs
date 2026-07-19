@@ -1,5 +1,5 @@
-using System.Globalization;
 using Rubjerg.Graphviz;
+using System.Globalization;
 using VIA.WPF.Graph.Core.Layout;
 
 namespace VIA.WPF.Graph.Graphviz.Layout;

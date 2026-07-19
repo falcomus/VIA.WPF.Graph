@@ -1,6 +1,6 @@
+using Rubjerg.Graphviz;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using Rubjerg.Graphviz;
 
 namespace VIA.WPF.Graph.Graphviz.Verification;
 
